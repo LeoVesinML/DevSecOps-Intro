@@ -35,7 +35,7 @@ The course follows a **map → discover → write → ship → scan → harden �
 
 ## The Project: OWASP Juice Shop
 
-A deliberately-vulnerable web application maintained by Björn Kimminich since 2014; OWASP Flagship since 2018. The course pins **v20.0.0** (May 2026 release — Node 24, ~125 MB image, includes AI-themed prompt-injection challenges).
+A vulnerable-by-design web application created by Björn Kimminich in 2014, an OWASP Flagship project. The course pins **v20.0.0** (May 2026 release, Node 24, 112 challenges including chatbot prompt injection).
 
 ```mermaid
 graph LR
@@ -57,7 +57,7 @@ graph LR
 
 ## Lectures + Readings
 
-10 lectures, 17-25 slides each, 350-450 lines. Two readings replace lectures for the bonus labs.
+10 lectures, 17-25 slides each. Two readings replace lectures for the bonus labs.
 
 | # | Title | File |
 |--:|-------|------|
@@ -308,7 +308,7 @@ DevSecOps-Intro/
 <details>
 <summary>Standards & specs (bookmark these)</summary>
 
-- [OWASP Top 10:2025](https://owasp.org/Top10/2025/) — current; built from 175k+ CVE records
+- [OWASP Top 10:2025](https://owasp.org/Top10/2025/) — current edition; built from data on 2.8M+ applications
 - [OWASP Top 10 CI/CD Security Risks](https://owasp.org/www-project-top-10-ci-cd-security-risks/) — Lecture 4 framework
 - [OWASP SAMM v2.0](https://owaspsamm.org/) — maturity model
 - [SLSA v1.0](https://slsa.dev/spec/v1.0/) — supply-chain framework
@@ -322,7 +322,6 @@ DevSecOps-Intro/
 
 - *"What Happens When Falco Detects?"* — Loris Degioanni, KubeCon EU 2024
 - *"The xz Backdoor — Engineering Postmortem"* — Andres Freund, BSDCan 2024
-- *"OWASP Top 10:2025 — What Changed and Why"* — Andrew van der Stock, Global AppSec 2025
 - *"Sigstore: Software Signing for Everybody"* — Luke Hinds, KubeCon 2022
 
 </details>
