@@ -11,7 +11,7 @@
 
 ## Setup
 
-- Docker 26 or newer (`docker --version`), Git 2.34 or newer, `curl`, `jq`, a GitHub account.
+- Docker 26 or newer (`docker --version`), Git 2.34 or newer, `curl`, `jq` (`brew install jq` or `apt install jq`), a GitHub account.
 - Fork the course repo, clone your fork, create the branch:
 
 ```bash
@@ -24,7 +24,7 @@ git switch -c feature/lab1
 
 ### 1.1 Run it
 
-The course pins `v20.0.0`.
+You do not build Juice Shop; you run the official image and observe it, the same posture you take with a production system. The course pins `v20.0.0`.
 
 ```bash
 docker run -d --name juice-shop -p 127.0.0.1:3000:3000 bkimminich/juice-shop:v20.0.0
@@ -46,7 +46,7 @@ Expected: `HTTP 200`, `{"version":"20.0.0"}`, `46`, and one `bkimminich/juice-sh
 
 ### 1.2 Look around
 
-Open http://127.0.0.1:3000 in a browser. Find the login and registration forms and the product list. In DevTools check Application → Local Storage for anything pre-populated, and in the Network tab watch what one product click requests and whether those requests need authentication.
+Open http://127.0.0.1:3000 in a browser and note what you find: the login and registration forms (Account menu, top right), the product list, any admin or account area you can discover, errors in the DevTools console, anything pre-populated in Application → Local Storage or cookies. In the Network tab click one product and watch the requests (`/api/Products/<id>/reviews` and similar): do they need authentication?
 
 Security headers:
 
@@ -63,7 +63,7 @@ Create `submissions/lab1.md` with a section `## Triage report` that contains:
 - Asset: image tag, image digest, host OS, Docker version.
 - Deployment: the run command, access URL, whether the port is bound to localhost only and why that matters, restart policy.
 - Health: HTTP code on `/`, the version and product-count outputs, the `docker ps` line.
-- Surface: what you found in 1.2, in your own words.
+- Surface: the five things you looked for in 1.2 (login and registration, products, admin or account area, console errors, local storage and cookies), in your own words.
 - Headers: the `curl -sI` output and which of the four headers are missing.
 - Top 3 risks: a name, 2-3 sentences on why it matters, and one OWASP Top 10:2025 category (A01 to A10) for each.
 
@@ -111,6 +111,7 @@ A preview of Lecture 4 on CI/CD security. Write `.github/workflows/lab1-smoke.ym
 #   - services: https://docs.github.com/en/actions/using-jobs/running-jobs-in-a-container
 #   - Juice Shop needs 20-30 seconds to start in CI; a 10-second loop fails
 #   - use pull_request, not pull_request_target (Lecture 4 explains why)
+#   - a tag pin is accepted in this first workflow; Lecture 4 covers pinning by digest
 ```
 
 Push, open the draft PR, and make the run green.
@@ -130,7 +131,7 @@ Open a PR from `your-fork:feature/lab1` to `course-repo:main`. The description s
 
 ## Acceptance criteria
 
-- Task 1 (6): `docker ps` shows the v20.0.0 container bound to `127.0.0.1:3000`; version and product-count outputs pasted; digest is a `sha256:` value from `RepoDigests`; all four headers classified as present or missing; three risks, each mapped to an A01 to A10 category.
+- Task 1 (6): `docker ps` shows the v20.0.0 container bound to `127.0.0.1:3000`; version and product-count outputs pasted; digest is a `sha256:` value from `RepoDigests`; all six report items filled with actual values; at least three of the four headers correctly classified as present or missing; three risks, each mapped to an A01 to A10 category.
 - Task 2 (3): template file exists with the four sections and the three checklist items; auto-fill shown on a real PR.
 - Task 3 (1): stars and follows done; section written.
 - Bonus (2): workflow triggers on `pull_request`, sets `permissions: contents: read` at workflow level, polls with a timeout, and the run on the submitted PR is green.
