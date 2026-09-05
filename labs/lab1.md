@@ -14,6 +14,7 @@
 - Docker 26 or newer (`docker --version`), Git 2.34 or newer, `curl`, `jq` (`brew install jq` or `apt install jq`), a GitHub account.
 - Fork the course repo, clone your fork, create the branch:
 
+<!-- verify:skip student fork clone -->
 ```bash
 git clone https://github.com/<your-username>/DevSecOps-Intro.git
 cd DevSecOps-Intro
@@ -34,6 +35,7 @@ docker run -d --name juice-shop -p 127.0.0.1:3000:3000 bkimminich/juice-shop:v20
 
 Wait about 20 seconds, then:
 
+<!-- verify:wait 25 -->
 ```bash
 docker ps --filter name=juice-shop --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:3000
@@ -71,6 +73,7 @@ Actual values only. A placeholder left in the report costs points.
 
 ### 1.4 Keep the container
 
+<!-- verify:skip stops the container later blocks need -->
 ```bash
 docker stop juice-shop   # do not `docker rm`: Labs 4, 5 and 7 reuse this image
 ```
@@ -120,6 +123,7 @@ Push, open the draft PR, and make the run green.
 
 ## Submit
 
+<!-- verify:skip student fork files -->
 ```bash
 git add .github/PULL_REQUEST_TEMPLATE.md submissions/lab1.md
 git add .github/workflows/lab1-smoke.yml   # bonus only

@@ -78,13 +78,13 @@ graph LR
 
 ## Technology Stack
 
-All tools free and open-source (or have a meaningful free tier). Versions pinned to April-May 2026.
+All tools free and open-source (or have a meaningful free tier). [`tools/versions.yaml`](tools/versions.yaml) is the source of truth for every pin; a weekly job reports when one falls behind upstream. Pins are refreshed before each cohort, not mid-semester.
 
 | Category | Tool | Version | Introduced |
 |----------|------|---------|------------|
 | Target app | OWASP Juice Shop | v20.0.0 | Week 1 (provided) |
 | Containers | Docker / Docker Compose | 28.x | Week 1 |
-| Threat modeling | Threagile | 0.9.1 | Week 2 |
+| Threat modeling | Threagile | 0.9.1 (Jul 2024, latest release) | Week 2 |
 | Pre-commit framework | pre-commit | latest | Week 3 |
 | Secret scanning | gitleaks | 8.21.x | Week 3 |
 | History rewrite | git-filter-repo | 2.45+ | Week 3 |
@@ -121,6 +121,8 @@ The course repo ships **only** lab specs, lecture notes, and plumbing files. Stu
 | `labs/lab10/imports/` — DefectDojo importer | ✅ | |
 | `labs/lab11/docker-compose.yml`, `labs/lab11/reverse-proxy/nginx.conf` | ✅ | |
 | `labs/lab12/scripts/` — Kata install/configure | ✅ | |
+| `tools/` — version manifest + drift and lab checkers | ✅ | |
+| `.github/workflows/course-health.yml`, `.github/ISSUE_TEMPLATE/` | ✅ | |
 | `.github/PULL_REQUEST_TEMPLATE.md` — students write in Lab 1 | | ✅ |
 | `.github/workflows/*.yml` — students add from Lab 1 bonus onward | | ✅ |
 | `.pre-commit-config.yaml` — students write in Lab 3 | | ✅ |
@@ -285,6 +287,11 @@ DevSecOps-Intro/
 │   ├── lab10/imports/                      # DefectDojo importer
 │   ├── lab11/docker-compose.yml, lab11/reverse-proxy/   # Nginx stack
 │   └── lab12/scripts/, lab12/setup/        # Kata install
+│
+├── tools/                         # Course maintenance (ships)
+│   ├── versions.yaml              #   every pinned tool version, one source of truth
+│   ├── check-versions.py          #   compares the pins with upstream releases
+│   └── verify-lab.sh              #   runs every shell block of a lab spec
 │
 ├── refs/                          # Instructor reference submissions (gitignored)
 │   └── labN.md                    #   model answers per lab, captured from dry-runs

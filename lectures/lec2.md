@@ -7,9 +7,9 @@
 * 🏗️ You can't scan code that doesn't exist yet
 * 🎯 At the **design** stage, the cheapest bug fix is "we won't build it that way" — but you have to **see** the bug first
 * 🎭 **Threat modeling** = a structured pre-mortem where you and your team enumerate how your system can be attacked, **before** you ship the design to anyone with a keyboard
-* 💸 Recall Boehm's curve from Lecture 1: a design-phase fix costs roughly $10. The same fix in production: $10,000+. Threat modeling is one of the highest-leverage activities in DevSecOps
+* 💸 Recall Boehm's curve from Lecture 1: the later a defect is found, the dearer it is, and design is the earliest stage there is. Threat modeling is the only control in this course that runs before a line of code exists
 
-> 💬 *"What's your threat model?"* — the single most useful question in security, made famous by **Bruce Schneier** in *Beyond Fear* (2003)
+> 💬 *"What's your threat model?"* — the question that separates a security discussion from a security argument. Without it, "is this secure?" has no answer
 
 > 🤔 **Think:** Lecture 1 covered Equifax, Capital One, Log4Shell. Pick one — what would the **design-stage** conversation have flagged? (Spoiler: all three.)
 
@@ -46,9 +46,7 @@ graph LR
 
 ## 📍 Slide 4 – 🏛️ What Threat Modeling Actually Is
 
-> 💬 Adam Shostack's *Threat Modeling: Designing for Security* (Wiley, 2014) defines it as: *"the process of thinking about what can go wrong, and what you're going to do about it."*
-
-Four questions every threat model answers (Shostack's framework):
+Adam Shostack's *Threat Modeling: Designing for Security* (Wiley, 2014) frames the whole practice as four questions. The 2020 **Threat Modeling Manifesto**, written by fifteen practitioners including Shostack, adopts the same four:
 
 | # | ❓ Question | 📦 Output |
 |---|---|---|
@@ -102,14 +100,14 @@ flowchart LR
 | ➡️ Arrow | **Data flow** | Direction of data movement |
 | ✂️ Dashed line | **Trust boundary** | Crosses change trust level |
 
-* 🏛️ DFDs come from **Tom DeMarco** (*Structured Analysis*, 1979) — predating threat modeling by 20 years
+* 🏛️ DFDs come from 1970s structured analysis: the notation was proposed by **Larry Constantine** and popularised by **Tom DeMarco**'s *Structured Analysis and System Specification* (Yourdon Press, 1978), two decades before anyone used it for threats
 * 🪜 **Level 0** = single-circle "context diagram"; **Level 1** = subsystems exposed; **Level 2+** = per-subsystem internals. For threat modeling, **Level 1 is usually the right zoom**
 
 ---
 
 ## 📍 Slide 7 – 🎯 STRIDE — The Core Method
 
-* 🗓️ Developed by **Loren Kohnfelder and Praerit Garg at Microsoft, 1999**, as part of the early SDL
+* 🗓️ **Loren Kohnfelder and Praerit Garg**, Microsoft, **1 April 1999**, in an internal paper called *The Threats to Our Products*. It was the first method that told engineers **how to look** for threats instead of listing known ones
 * 📖 Each letter is a threat **category** mapped to a security **property**
 
 | 🔤 Letter | 🚨 Threat | 🛡️ Property violated | 💡 Example |
@@ -148,9 +146,9 @@ A login flow: `Browser → /api/login → user_db`
 graph TB
     TM[🎯 Threat modeling methods]
     TM --> ST[STRIDE<br/>Microsoft, 1999<br/>Threat categories]
-    TM --> PA[PASTA<br/>VerSprite, 2012<br/>Risk-centric, 7 stages]
-    TM --> LI[LINDDUN<br/>KU Leuven, 2010<br/>Privacy-focused]
-    TM --> FA[FAIR<br/>Jack Jones, 2005<br/>Quantitative risk in $]
+    TM --> PA[PASTA<br/>UcedaVelez and Morana, 2015<br/>Risk-centric, 7 stages]
+    TM --> LI[LINDDUN<br/>KU Leuven, 2011<br/>Privacy-focused]
+    TM --> FA[FAIR<br/>Quantitative risk in money]
     TM --> VA[VAST<br/>ThreatModeler<br/>App + Op, scales]
 
     style ST fill:#4CAF50,color:#fff
@@ -174,16 +172,17 @@ graph TB
 
 ## 📍 Slide 10 – ⚙️ Threagile: STRIDE That Runs in CI
 
-* 🏢 Created by **Christian Schneider** (Germany); first release 2020, open source (Apache 2.0)
-* 🐹 Written in Go; latest stable is **v0.9.1** (March 2026)
+* 🏢 Created by **Christian Schneider**; released **4 August 2020** at Black Hat USA Arsenal and DEF CON 28 AppSec Village, MIT licence
+* 🐹 Written in Go; latest release is **v0.9.1** (July 2024), which is what Lab 2 pins. The binary inside reports itself as 1.0.0
 * 📜 You describe the system in a YAML file: assets, communication links, trust boundaries, data assets
 * 🤖 Threagile runs ~50 built-in **risk rules** and outputs PDF + Excel + JSON reports with **scored risks**, mapped to STRIDE
 * 🪜 Crucial property: **the model is version-controlled**, **diffable**, **runnable in CI** — you can fail a PR if a new high-severity threat appears
 
 ```bash
-# Install + run (lab uses Docker)
-docker run --rm -it -v "$PWD":/app/work threagile/threagile \
-  -model /app/work/threagile.yaml \
+# ✅ Lab 2 runs exactly this. The output directory must exist first
+mkdir -p output
+docker run --rm -v "$PWD":/app/work threagile/threagile:0.9.1 \
+  -model /app/work/threagile-model.yaml \
   -output /app/work/output
 ```
 
@@ -235,16 +234,16 @@ Selected from Threagile's ~50 built-in rules:
 
 | 🚨 Rule ID | 🎯 What it detects |
 |---|---|
-| `unencrypted-asset` | Asset without disk encryption |
-| `unencrypted-communication-link` | Link not using a `*-encrypted` protocol |
-| `missing-authentication` | Link with no auth declared |
-| `untrusted-deserialization` | Process accepts serialized data from untrusted source |
-| `cross-site-scripting` | Web frontend without CSP |
-| `sql-not-prepared-statement` | DB link without preparedness mitigation declared |
-| `dos-risky-access-across-trust-boundary` | High-traffic crossing boundary; rate-limit it |
-| `accidental-secret-leak` | Secret-bearing data flows to logging/monitoring |
+| `unencrypted-communication` | Link whose protocol is not an encrypted one |
+| `unencrypted-asset` | Asset storing data without encryption |
+| `missing-authentication` | Link into a sensitive asset with no authentication |
+| `cross-site-scripting` | Web frontend able to render untrusted content |
+| `server-side-request-forgery` | Asset making outbound calls on someone else's behalf |
+| `missing-vault` | Secrets with no vault asset anywhere in the model |
+| `container-baseimage-backdooring` | Container built from an unverified base image |
+| `missing-build-infrastructure` | No build pipeline modelled at all |
 
-* 🪜 **Bonus task in Lab 2** asks you to model a *secure variant* (HTTPS, encrypted DB, prepared statements declared) and **diff the risk reports** — typically the count drops from ~15 high+critical to ~3
+* 🪜 **Task 2 in Lab 2** asks you to model a *secure variant* and **diff the reports**. On the shipped model the baseline is **23 risks: 4 elevated, 14 medium, 5 low, none critical or high**. Encrypting both links and both stores removes exactly three rule classes and lands at **18**. Note what that means: hardening the transport removed a fifth of the list, and the rest is design and process work
 
 ---
 
@@ -275,24 +274,29 @@ Selected from Threagile's ~50 built-in rules:
 
 ---
 
-## 📍 Slide 15 – 🔬 Case Study: When Threat Modeling Caught It
+## 📍 Slide 15 – 🔬 Case Study: The Trust Boundary Nobody Modelled (2025)
 
-**Slack's 2015 OAuth redesign.** During pre-launch review, an engineer ran STRIDE on the OAuth callback flow and asked: *"Can a third-party site initiate this redirect?"* — a textbook **STRIDE-T (Tampering)** question on the redirect-URL data flow. A CSRF-style bug was found and patched before public release. Slack later acknowledged the model surfaced it.
+**Salesloft Drift, August 2025.** Drift is a chat product that integrates with Salesforce. To do its job it holds OAuth access and refresh tokens for its customers' Salesforce tenants.
 
-* 🪜 More common (but harder to cite): the **non-incidents.** Successful threat modeling produces *nothing* — no breach, no headline. This is why it's politically hard to fund
+* 🗓️ **8-18 August 2025:** an attacker tracked as UNC6395 uses stolen Drift OAuth tokens to authenticate to customer Salesforce instances and run bulk SOQL queries through the API
+* 🌍 Google's threat intelligence team reports **more than 700 organisations** potentially affected; Salesloft and Salesforce revoke every Drift token and take the integration offline
+* 🎯 What the attacker was after: credentials sitting inside CRM records — AWS keys, Snowflake tokens, passwords
+* 🪜 **In STRIDE terms:** **S** (a valid token used by the wrong party) and **I** (bulk disclosure). Nothing was "exploited" in the CVE sense: the integration worked exactly as designed
+* 🧠 **The design-stage question that would have surfaced it:** *what can this third-party integration's token reach, who can revoke it, and would we see it being used at 3 a.m.?* An integration is an arrow crossing a trust boundary, drawn by a vendor rather than by you
 
-> 💬 *"You don't get medals for incidents you prevented. Only for the ones you barely survived."* — paraphrased lament from any working security engineer
-
----
-
-## 📍 Slide 16 – 🚨 Case Study: When Threat Modeling Was Skipped
-
-**Tesla's 2018 exposed Kubernetes dashboard** (also a Lab 6 case study). RedLock found a K8s admin console on Tesla's AWS, internet-exposed, no auth. Cryptominers used it.
-
-* 🤔 In STRIDE terms: **S** (spoofing — no auth) + **E** (elevation — admin endpoint exposed)
-* 🪜 A 30-minute threat-modeling session asking *"who can reach the admin dashboard?"* would have surfaced this immediately. The lecture's note is not "Tesla is bad"; it's that **routine threat modeling is cheap insurance for the kind of design oversights that scanners can't catch** until they're live
+> 🤔 **Think:** in Lab 2 the shipped model has exactly one arrow like this — the outbound webhook. What does Threagile say about it?
 
 ---
+
+## 📍 Slide 16 – 🚨 Case Study: When Nobody Asked "Who Can Reach This?"
+
+**Tesla, February 2018.** Researchers at RedLock find a Kubernetes administration console belonging to Tesla, running on AWS, with no password on it.
+
+* 🪜 Inside the console: credentials for Tesla's AWS environment, including an S3 bucket with vehicle telemetry
+* ⛏️ Attackers were already there, running cryptomining inside a Tesla pod, hiding behind their own mining pool and a Cloudflare-proxied endpoint on a non-standard port
+* 🤔 **In STRIDE terms:** **S** (no authentication at all) plus **E** (the admin plane is the highest privilege in the cluster)
+* 🪜 A thirty-minute session asking *"who can reach the admin dashboard, and from where?"* surfaces this before the console is ever exposed. This is the cheapest question in the course
+* 🧠 The general shape: scanners find this only once it is live and reachable. A model finds it while it is still a diagram
 
 ## 📍 Slide 17 – 🧠 When You'll Throw the Model Away
 
@@ -307,7 +311,7 @@ Selected from Threagile's ~50 built-in rules:
 
 ## 📍 Slide 18 – 🪜 Building the Habit in Your Team
 
-* 🧪 **Pattern that works** (from Mozilla, Riot Games, GitHub's public security blogs):
+* 🧪 **A pattern that works:**
   1. **Design doc template** has a "Threat Model" section that **must be filled** before architectural review
   2. **Security Champion** (from Lecture 1) sits in on the design review and asks STRIDE prompts
   3. **Threagile YAML** lives in the service repo next to `docker-compose.yaml`
@@ -322,9 +326,9 @@ Selected from Threagile's ~50 built-in rules:
 ## 📍 Slide 19 – ⏭️ What's Next + What You'll Do
 
 * 🧪 **Lab 2** (this week):
-  * Task 1: Run Threagile on a provided architecture YAML; read the risk report
-  * Task 2: Create a **secure variant** (HTTPS + encrypted DB) and **diff** the risk report
-  * Bonus: model a custom flow (e.g. Juice Shop's auth path)
+  * Task 1 (6 pts): run Threagile on the shipped Juice Shop model, rank the risks, map the top five to STRIDE letters
+  * Task 2 (4 pts): harden the model, re-run, and account for what the diff did **and did not** remove
+  * Bonus (2 pts): build a second model of the authentication flow from a stub, and find risks the architecture model could not see
 * 🚀 **Lecture 3** (next week): **Secure Git** — signed commits, secret scanning, history rewriting. This is where you start *implementing* the controls that threat models keep recommending
 * 🎯 Threat modeling will feed:
   * **Lab 5 (SAST/DAST)** — what to focus the scan on
@@ -345,8 +349,8 @@ Selected from Threagile's ~50 built-in rules:
 
 **Talks & specs:**
 
-* 🎥 *"Threat Modeling: An Owners Manual"* — Adam Shostack, RSA 2017
-* 🎥 *"Agile Threat Modeling with Threagile"* — Christian Schneider, AppSec EU 2021
+* 🎥 *"Threagile: Agile Threat Modeling with Open-Source Tools"* — Christian Schneider, DEF CON 28 AppSec Village (2020), [slides](https://christian-schneider.net/slides/DEF-CON-2020-Threagile.pdf)
+* 📜 [Threat Modeling Manifesto](https://www.threatmodelingmanifesto.org/) (2020) — values, principles and anti-patterns, agreed by fifteen practitioners
 * 📜 [OWASP Threat Modeling Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html)
 * 📜 [Threagile Risk Rules Reference](https://threagile.io/docs/risks/) — every built-in rule
 * 📜 [Microsoft SDL Threat Modeling page](https://www.microsoft.com/en-us/securityengineering/sdl/threatmodeling)
@@ -360,5 +364,21 @@ Selected from Threagile's ~50 built-in rules:
 | 3 | Trust boundaries are the only arrows you need to scrutinize. Everything in one zone is "trusted by definition." |
 | 4 | A 30-minute model done quarterly beats a 30-page model done once. |
 | 5 | Threagile makes threat modeling **diffable** and **runnable in CI** — that's how it scales past a single workshop. |
+| 6 | Hardening a model removes the risks you declared away, not the ones you have to build for. Lab 2 shows a fifth of the list going, and the rest staying. |
 
 > 💬 *"All models are wrong, but some are useful."* — George Box (1976) — applies to threat models exactly as much as to weather forecasts.
+
+---
+
+## 📚 Sources
+
+- STRIDE origin, Kohnfelder and Garg, *The Threats to Our Products* (1 April 1999), the paper itself: https://adam.shostack.org/microsoft/The-Threats-To-Our-Products.docx ; history: https://www.darkreading.com/20-years-of-stride-looking-back-looking-forward/a/d-id/1334275
+- Shostack's four questions and the Threat Modeling Manifesto (2020): https://www.threatmodelingmanifesto.org/ , https://shostack.org/blog/threat-modeling-manifesto/
+- Data flow diagrams, structured analysis origin: https://en.wikipedia.org/wiki/Data-flow_diagram ; DeMarco, *Structured Analysis and System Specification* (Yourdon Press, 1978): https://archive.org/details/structuredanalys0000dema
+- LINDDUN, KU Leuven: https://linddun.org/publications/ ; PASTA, UcedaVelez and Morana, *Risk Centric Threat Modeling* (Wiley, 2015): https://www.wiley.com/en-us/Risk+Centric+Threat+Modeling-p-9780470500965
+- Threagile: repository and MIT licence, https://github.com/Threagile/threagile ; v0.9.1 release (July 2024), https://github.com/Threagile/threagile/releases ; launch coverage, https://portswigger.net/daily-swig/black-hat-2020-threagile-toolkit-enables-code-driven-threat-modeling ; DEF CON 28 slides, https://christian-schneider.net/slides/DEF-CON-2020-Threagile.pdf
+- Rule IDs and risk counts: produced by `threagile/threagile:0.9.1 -list-risk-rules` and by running the shipped `labs/lab2/threagile-model.yaml` on 2026-09-05
+- Salesloft Drift / UNC6395 (August 2025): https://cloud.google.com/blog/topics/threat-intelligence/data-theft-salesforce-instances-via-salesloft-drift , https://thehackernews.com/2025/09/salesloft-takes-drift-offline-after.html
+- Tesla Kubernetes console (February 2018), RedLock: https://cyberscoop.com/tesla-cryptomining-redlock-cloud-breach/ , https://www.cnbc.com/2018/02/21/hackers-hijack-teslas-cloud-system-to-mine-cryptocurrency-redlock.html
+- Microsoft SDL and *Threat Modeling* (Swiderski and Snyder, Microsoft Press, 2004): https://learn.microsoft.com/en-us/previous-versions/ms995349(v=msdn.10)
+- Box, "Science and Statistics" (JASA, 1976): https://www-sop.inria.fr/members/Ian.Jermyn/philosophy/writings/Boxonmaths.pdf

@@ -1,0 +1,96 @@
+# Single source of truth for every tool version this course pins.
+# Lab specs and the README must agree with this file.
+#
+# Cadence: re-pin everything before each cohort (August, January). During a
+# semester a pin changes only when the current one breaks, and then the lab's
+# Common pitfalls says so. Students must not find lab 4 changed under them
+# while they are on lab 7.
+#
+# Check drift:  python3 tools/check-versions.py
+# Verify a lab: tools/verify-lab.sh 2 --run
+
+checked: 2026-09-05
+
+tools:
+  juice-shop:
+    pin: v20.0.0
+    labs: [1, 4, 5, 7, 8, 9, 10]
+    source: https://github.com/juice-shop/juice-shop/releases
+    github: juice-shop/juice-shop
+    docker: bkimminich/juice-shop
+
+  threagile:
+    pin: "0.9.1"
+    labs: [2]
+    source: https://github.com/Threagile/threagile/releases
+    github: Threagile/threagile
+    docker: threagile/threagile
+
+  gitleaks:
+    pin: v8.21.2
+    labs: [3]
+    github: gitleaks/gitleaks
+
+  syft:
+    pin: v1.41.1
+    labs: [4]
+    github: anchore/syft
+
+  grype:
+    pin: v0.107.0
+    labs: [4, 10]
+    github: anchore/grype
+
+  trivy:
+    pin: v0.69.0
+    labs: [4, 6, 7, 10]
+    github: aquasecurity/trivy
+
+  semgrep:
+    pin: "1.157.0"
+    labs: [5, 10]
+    github: semgrep/semgrep
+
+  zap:
+    pin: v2.15.0
+    labs: [5, 10]
+    github: zaproxy/zaproxy
+    docker: ghcr.io/zaproxy/zaproxy
+    note: labs run the floating `stable` docker tag; the pin records what was tested
+
+  checkov:
+    pin: "3.2.334"
+    labs: [6, 10]
+    github: bridgecrewio/checkov
+
+  kics:
+    pin: latest
+    labs: [6]
+    docker: checkmarx/kics
+    note: no pinned tag in use; candidate for pinning next cohort
+
+  k3d:
+    pin: v5.8.3
+    labs: [7]
+    github: k3d-io/k3d
+
+  conftest:
+    pin: v0.68.0
+    labs: [7, 9]
+    github: open-policy-agent/conftest
+
+  cosign:
+    pin: v3.0.2
+    labs: [8]
+    github: sigstore/cosign
+
+  falco:
+    pin: "0.43.0"
+    labs: [9]
+    github: falcosecurity/falco
+
+  defectdojo:
+    pin: "2.58.3"
+    labs: [10]
+    github: DefectDojo/django-DefectDojo
+    note: 3.x is out and changes parser names; lab 10 needs a full re-run before bumping

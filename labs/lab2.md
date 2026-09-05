@@ -5,387 +5,157 @@
 ![points](https://img.shields.io/badge/points-10%2B2-orange)
 ![tech](https://img.shields.io/badge/tech-Threagile%20%2B%20STRIDE-informational)
 
-> **Goal:** Generate a STRIDE-based threat model of OWASP Juice Shop with Threagile, then produce a secure-variant model and diff the risk reports.
-> **Deliverable:** A PR from `feature/lab2` with `submissions/lab2.md` (risk count tables + analysis) and any updated/added Threagile YAML files. Submit PR link via Moodle.
-
----
-
-## Overview
-
-In this lab you will practice:
-- Reading a real **Threagile YAML model** (assets, communication links, trust boundaries, data assets)
-- Running **Threagile v0.9.1** in a container and reading its PDF + JSON risk reports
-- Producing a **secure variant** by tightening a handful of fields (HTTPS, encrypted DB, prepared statements)
-- **Diffing the risk reports** — the same model exercise you'd do in a real architectural review
-
-> The skill is **reading + modifying** a declarative threat model and observing how each change moves the risk count. The Threagile rules themselves are the plumbing.
-
----
-
-## Project State
-
-**You should have from Lab 1:**
-- A working `feature/lab2` branch (forked from `main` of your fork, see Lab 1 setup)
-- `submissions/` directory in your fork
-- A PR template that auto-fills your description
-
-**This lab adds:**
-- A reviewed/modified Threagile YAML for the baseline Juice Shop architecture
-- A second YAML for the secure variant
-- Risk-count tables + analysis in `submissions/lab2.md`
-
----
+> **Goal:** Run a STRIDE threat model of the Juice Shop deployment with Threagile, harden the model, and measure what the hardening actually removes.
+> **Deliverable:** A PR from `feature/lab2` with `submissions/lab2.md` and the YAML models you write. Submit the PR link via Moodle.
+> **Builds on:** the Juice Shop deployment from Lab 1. **Feeds:** Lab 5 (what to scan first), Lab 6 (which infra risks matter), Lab 9 (which behaviour to detect).
 
 ## Setup
 
+<!-- verify:skip student fork branch -->
 ```bash
-# Verify you're on a fresh branch off main
 git switch main && git pull
 git switch -c feature/lab2
+```
 
-# Verify the lab plumbing is present
-ls labs/lab2/threagile-model.yaml      # ~430 lines — read it before starting
-
-# Pull the Threagile container image (course pins v0.9.1, March 2026)
+```bash
 docker pull threagile/threagile:0.9.1
-
-# Make a working directory for generated reports (gitignored)
-mkdir -p labs/lab2/output
+mkdir -p labs/lab2/output labs/lab2/output-secure
 ```
 
-> **Plumbing provided** (don't rewrite it; modify it for tasks below):
-> - [`labs/lab2/threagile-model.yaml`](lab2/threagile-model.yaml) — baseline Juice Shop architecture (assets, comms, trust boundaries, data assets, abuse cases, security requirements)
+`labs/lab2/threagile-model.yaml` (429 lines) is the baseline model of the Lab 1 setup: browser, optional reverse proxy, the Juice Shop container, host storage, an outbound webhook, and four trust boundaries. Read it before you run anything. Threagile does not create output directories, so the `mkdir -p` above is not optional.
 
----
+## Task 1 — Baseline threat model (6 pts)
 
-## Task 1 — Baseline Threat Model (6 pts)
-
-**Objective:** Run Threagile on the provided baseline model, read the risk report, and identify the top 5 risks the tool flags.
-
-### 1.1: Generate the baseline report
+### 2.1 Generate the report
 
 ```bash
-# Run Threagile against the provided model
-docker run --rm \
-  -v "$(pwd)/labs/lab2":/app/work \
+docker run --rm -v "$(pwd)/labs/lab2":/app/work \
   threagile/threagile:0.9.1 \
-  -model /app/work/threagile-model.yaml \
-  -output /app/work/output
-
-# Verify outputs exist
+  -model /app/work/threagile-model.yaml -output /app/work/output
 ls labs/lab2/output/
-# Should see: report.pdf, risks.xlsx, risks.json, data-asset-diagram.png, data-flow-diagram.png
 ```
 
-The DFD images (`*.png`) are useful — open them to visualize the architecture and trust boundaries from Lecture 2.
+You get `report.pdf`, `risks.json`, `stats.json`, `risks.xlsx`, and two diagrams. `Fontconfig error: No writable cache directories` is harmless noise. Open `data-flow-diagram.png`: this is the DFD from the lecture, drawn from the YAML.
 
-### 1.2: Read the risk report
-
-Open `labs/lab2/output/report.pdf` (any PDF reader). Note:
-- **Total risks** identified (front-matter summary)
-- Risks grouped by **severity** (Critical / High / Elevated / Medium / Low)
-- Each risk maps to a **rule ID** (e.g., `unencrypted-communication-link`, `missing-authentication`)
-
-### 1.3: Top 5 risks table
-
-Open `labs/lab2/output/risks.json` — it has the same data in machine-readable form. Generate a baseline summary:
+### 2.2 Count the risks
 
 ```bash
-# Count risks per severity (paste this output into your submission)
-jq '[.[] | .severity] | group_by(.) | map({severity: .[0], count: length})' \
-  labs/lab2/output/risks.json
-
-# Top 5 risks by severity + technical asset
-jq '[.[] | {severity, category, title, technical_asset: .most_relevant_technical_asset}] |
-    sort_by(.severity) | .[:5]' \
-  labs/lab2/output/risks.json
+jq 'length' labs/lab2/output/risks.json
+jq '[.[].severity] | group_by(.) | map({severity: .[0], count: length})' labs/lab2/output/risks.json
 ```
 
-### 1.4: Document in `submissions/lab2.md`
+`risks.json` is a flat array. Each entry has `category` (the rule ID), `severity`, `title`, and `most_relevant_technical_asset`. `stats.json` holds the same counts grouped by severity and risk status.
 
-Add a section like:
+### 2.3 Rank them properly
 
-```markdown
-## Task 1: Baseline Threat Model
+Severity is a string, so a plain `sort_by(.severity)` sorts alphabetically and puts `elevated` above `high`. Rank it explicitly:
 
-### Risk count by severity
-| Severity | Count |
-|----------|------:|
-| Critical | <n> |
-| High | <n> |
-| Elevated | <n> |
-| Medium | <n> |
-| Low | <n> |
-| **Total** | <n> |
-
-### Top 5 risks (paste from `jq` output)
-1. **<rule-id>** — <title>; severity <X>; affecting <asset>
-2. ...
-
-### STRIDE mapping (Lecture 2 slide 7)
-For each top-5 risk, name the STRIDE letter(s) it primarily violates:
-- Risk 1: **<S/T/R/I/D/E>** — <why, 1 sentence>
-- Risk 2: ...
-
-### Trust boundary observation
-Looking at `data-flow-diagram.png`, name one arrow crossing a trust boundary that
-appears in your top-5 risks. Why is that arrow particularly attractive to an attacker?
+```bash
+jq -r '["critical","high","elevated","medium","low"] as $order
+  | [.[] | {sev: .severity, rule: .category, asset: .most_relevant_technical_asset}]
+  | sort_by(.sev as $s | $order | index($s))
+  | .[:5][] | "\(.sev)\t\(.rule)\t\(.asset)"' labs/lab2/output/risks.json
 ```
 
----
+**Submit** in `submissions/lab2.md`, section `## Task 1`:
 
-## Task 2 — Secure Variant & Risk Diff (4 pts)
+- The severity table from 2.2 with your actual counts, and the total.
+- The top five rows from 2.3.
+- For each of those five: the STRIDE letter it maps to and one sentence saying why.
+- One arrow in `data-flow-diagram.png` that crosses a trust boundary and appears in your top five: which boundary, and why that arrow is worth an attacker's time.
 
-> ⏭️ Optional. Skipping it won't affect future labs — but the diff is what makes threat modeling persuasive in PR review.
+## Task 2 — Secure variant and diff (4 pts)
 
-**Objective:** Create a hardened variant of the model (HTTPS + encrypted DB + prepared statements declared) and compare the two risk reports.
+Optional. Skipping it does not affect later labs.
 
-### 2.1: Create the secure variant
+### 2.4 Harden the model
 
 ```bash
 cp labs/lab2/threagile-model.yaml labs/lab2/threagile-model-secure.yaml
-# YOUR TASK: edit threagile-model-secure.yaml to harden the architecture
+docker run --rm threagile/threagile:0.9.1 -list-types | grep -iE 'encryption|protocol'
 ```
 
-**Required changes** (each is one field):
+Edit the copy so that:
 
-| Change | Where | What |
-|---|---|---|
-| Force HTTPS into the app | `communication_links` for user→app traffic | `protocol: https` (was `http`) |
-| Encrypt at rest | the database asset under `technical_assets` | `encryption: data-with-symmetric-shared-key` (or stronger) |
-| TLS for outbound calls | external integration link (`WebHook` or similar) | `protocol: https` |
-| Declare prepared statements | the DB communication link | add a comment in the description that the app uses parameterized queries (Threagile reads the description for some heuristics) |
-| Disable plain log writes | any logging link | encrypt the destination or remove the link |
+- neither communication link into the application carries traffic in clear text,
+- the link from the reverse proxy to the application declares how it authenticates,
+- the application asset and the persistent storage asset are encrypted at rest.
 
-> **Hint:** Threagile's full list of valid protocol values is in its documentation (the [Resources](#resources) section). Common ones for this lab: `https`, `mqtt-encrypted`, `jdbc-encrypted`, `nrpe-encrypted`.
+Use the enum values `-list-types` printed. Keep `title:` under 31 characters.
 
-### 2.2: Generate the secure-variant report
+### 2.5 Re-run and diff
 
+<!-- verify:skip needs the secure model the student writes in 2.4 -->
 ```bash
-docker run --rm \
-  -v "$(pwd)/labs/lab2":/app/work \
+docker run --rm -v "$(pwd)/labs/lab2":/app/work \
   threagile/threagile:0.9.1 \
-  -model /app/work/threagile-model-secure.yaml \
-  -output /app/work/output-secure
+  -model /app/work/threagile-model-secure.yaml -output /app/work/output-secure
+
+jq 'length' labs/lab2/output-secure/risks.json
+jq -r '[.[].category] | unique[]' labs/lab2/output/risks.json > /tmp/base-rules.txt
+jq -r '[.[].category] | unique[]' labs/lab2/output-secure/risks.json > /tmp/secure-rules.txt
+echo "gone:";  comm -23 /tmp/base-rules.txt /tmp/secure-rules.txt
+echo "new:";   comm -13 /tmp/base-rules.txt /tmp/secure-rules.txt
 ```
 
-### 2.3: Diff the risk counts
+Note the output directory is `labs/lab2/output-secure`, not a directory inside `output/`.
+
+**Submit**, section `## Task 2`:
+
+- A table comparing baseline and secure counts per severity, with the deltas.
+- The rule IDs in `gone:`, each with the field change that removed it.
+- Two rules that still fire, and why your edits could not remove them.
+- The total dropped by roughly a fifth, not to zero. In 3-4 sentences: what kind of risk is left, and what would it take to close it? Name one that no YAML edit can close.
+
+## Bonus — Model the authentication flow (2 pts)
+
+Build a second, smaller model covering only Juice Shop's login path: browser, login endpoint, token issuing and verification, the credential store, an admin endpoint. Start from a skeleton, not from the baseline model:
 
 ```bash
-# Baseline counts
-jq '[.[] | .severity] | group_by(.) | map({severity: .[0], count: length})' \
-  labs/lab2/output/risks.json > /tmp/baseline-counts.json
-
-# Secure-variant counts
-jq '[.[] | .severity] | group_by(.) | map({severity: .[0], count: length})' \
-  labs/lab2/output/output-secure/risks.json > /tmp/secure-counts.json
-
-# Diff
-diff -u /tmp/baseline-counts.json /tmp/secure-counts.json || true
+mkdir -p labs/lab2/output-auth
+docker run --rm -v "$(pwd)/labs/lab2":/app/work \
+  threagile/threagile:0.9.1 -create-stub-model -output /app/work
+mv labs/lab2/threagile-stub-model.yaml labs/lab2/threagile-model-auth.yaml
 ```
 
-### 2.4: Document in `submissions/lab2.md`
+Requirements: at least five technical assets, five communication links and four data assets; the JWT signing key declared as its own data asset; every link carries `authentication` and `authorization`; the admin endpoint sits behind an authorisation check you can point to in the YAML. Copying the baseline model and deleting parts of it is not the task, and it produces a long risk list that means nothing.
 
-```markdown
-## Task 2: Secure Variant & Diff
+**Submit**, section `## Bonus`:
 
-### Risk count comparison
-| Severity | Baseline | Secure | Δ |
-|----------|---------:|-------:|--:|
-| Critical | <a> | <b> | <b-a> |
-| High | <a> | <b> | <b-a> |
-| Elevated | <a> | <b> | <b-a> |
-| Medium | <a> | <b> | <b-a> |
-| Low | <a> | <b> | <b-a> |
-| **Total** | <a> | <b> | <b-a> |
+- The severity table for this model.
+- Three risks it surfaces that the baseline architecture model did not, each with the rule ID, the STRIDE letter, and a one-sentence mitigation.
+- Two sentences on what a feature-level model showed that the architecture-level one could not.
 
-### Which rules are GONE in the secure variant?
-List 3 rule IDs that fired in baseline but not in secure-variant:
-1. `<rule-id>` — fixed by `<field change you made>`
-2. ...
+## Submit
 
-### Which rules are STILL THERE in the secure variant?
-Threat modeling never reaches zero risk. List 2 rules that still fire and explain why
-your changes didn't eliminate them (2-3 sentences each).
-
-### Honesty check
-Did the total drop more than 50%? If yes, what does that say about the cost-benefit
-of these particular hardening changes vs. the work you'd need to fully eliminate the rest?
-```
-
----
-
-## Bonus Task — Model the Juice Shop Auth Flow (2 pts)
-
-> 🌟 **Genuinely challenging.** This is the kind of focused threat model you'd do in a real architectural review of a specific feature.
-
-**Objective:** Build a **new, smaller** Threagile model focused on Juice Shop's authentication flow (login → JWT → session → admin endpoints). Run it, identify auth-specific risks the baseline model missed.
-
-### B.1: Build the focused model
-
-Create `labs/lab2/threagile-model-auth.yaml`. You'll write this **from scratch** (don't copy-paste the baseline — the point is to think through which assets and links actually matter for auth).
-
-```yaml
-# YOUR TASK: Auth-focused Threagile model
-# Required assets (minimum):
-#   - Browser (external entity, in 'Internet' trust boundary)
-#   - Juice Shop Auth API endpoint (process, in 'Container' trust boundary)
-#   - Token signing/verification component (process, in 'Container' trust boundary)
-#   - User DB credential store (data store, in 'Container' trust boundary)
-#   - Admin endpoint (process, in 'Container' trust boundary)
-#
-# Required data assets (minimum):
-#   - Credentials (username + password)
-#   - JWT token (issued, returned, used)
-#   - User session state
-#   - Admin operation requests
-#
-# Required communication links (minimum):
-#   - Browser → Auth API (login + register)
-#   - Auth API → Token signer (request a JWT)
-#   - Browser → API endpoints with JWT in Authorization header
-#   - JWT verification on each protected request
-#   - Browser → Admin endpoint (the JWT-must-have-admin-role flow)
-#
-# Hints:
-#   - Look at Threagile docs: https://threagile.io/docs/model/
-#   - Start with the smallest possible model; add complexity only where it reveals a risk
-#   - The auth flow is mostly STRIDE-S (Spoofing) and STRIDE-E (Elevation) territory
-#   - JWT signing keys are sensitive data assets — declare them
-```
-
-### B.2: Run + report
-
+<!-- verify:skip student fork files -->
 ```bash
-docker run --rm \
-  -v "$(pwd)/labs/lab2":/app/work \
-  threagile/threagile:0.9.1 \
-  -model /app/work/threagile-model-auth.yaml \
-  -output /app/work/output-auth
-```
-
-### B.3: Document in `submissions/lab2.md`
-
-```markdown
-## Bonus Task: Auth Flow Threat Model
-
-### Risk count
-| Severity | Count |
-|----------|------:|
-| Critical | <n> |
-| High | <n> |
-| ... |
-
-### Three auth-specific risks (NOT in the baseline model's top 5)
-For each, name:
-- The rule ID Threagile fires
-- The STRIDE letter
-- A 1-2 sentence mitigation in plain English
-
-1. **<rule-id>** — STRIDE: <X> — Mitigation: <...>
-2. ...
-
-### Reflection (2-3 sentences)
-What did building the focused model surface that the baseline architecture model missed?
-(Hint: feature-level threat models often find what architecture-level ones can't.)
-```
-
----
-
-## How to Submit
-
-```bash
-git add labs/lab2/threagile-model-secure.yaml      # Task 2
-git add labs/lab2/threagile-model-auth.yaml        # Bonus (if done)
-git add submissions/lab2.md
-git commit -m "feat(lab2): Threagile threat model + secure variant + auth flow"
+git add labs/lab2/threagile-model-secure.yaml submissions/lab2.md
+git add labs/lab2/threagile-model-auth.yaml   # bonus only
+git commit -m "feat(lab2): threat model, secure variant, auth flow"
 git push -u origin feature/lab2
 ```
 
-> **Don't commit** `labs/lab2/output/` or `labs/lab2/output-*/` — they're regenerated outputs (already in `.gitignore`). The PR is the YAML files + the submission analysis.
+Do not commit `labs/lab2/output*/`: the reports are regenerated and already ignored.
 
-PR checklist body:
+## Acceptance criteria
 
-```text
-- [x] Task 1 — Baseline risk table + top-5 with STRIDE mapping
-- [ ] Task 2 — Secure variant + risk diff table
-- [ ] Bonus — Auth-flow model + 3 auth-specific risks
-```
+- Task 1 (6): both runs produce `risks.json`; the severity table matches the file; five top risks listed with rule ID and asset; each mapped to a STRIDE letter with a reason; one trust-boundary crossing named and explained.
+- Task 2 (4): `threagile-model-secure.yaml` in the PR with all three hardening changes; the secure run completes; diff table filled; three removed rule IDs each tied to a field; two remaining rules explained; the "what is left" answer names a risk no YAML edit can close.
+- Bonus (2): `threagile-model-auth.yaml` written from the stub with the required asset, link and data-asset counts; run completes; three auth-specific risks with rule ID, STRIDE letter and mitigation.
 
----
+## Common pitfalls
 
-## Acceptance Criteria
-
-### Task 1 (6 pts)
-- ✅ Baseline Threagile run completes; `report.pdf` + `risks.json` exist
-- ✅ Severity breakdown table in submission matches the actual `risks.json` counts
-- ✅ Top 5 risks listed with rule ID + severity + asset (no placeholders)
-- ✅ Each top-5 risk mapped to a STRIDE letter with a 1-sentence justification
-- ✅ One trust-boundary-crossing arrow identified and explained
-
-### Task 2 (4 pts)
-- ✅ `threagile-model-secure.yaml` exists in the PR and shows ≥4 of the 5 required hardening changes
-- ✅ Secure-variant Threagile run completes
-- ✅ Diff table compares baseline vs secure-variant counts per severity
-- ✅ ≥3 rule IDs identified as fixed; ≥2 still-firing rules explained
-- ✅ Honesty check answered (no skipping the cost-benefit question)
-
-### Bonus Task (2 pts)
-- ✅ `threagile-model-auth.yaml` written from scratch (NOT a copy of baseline + edits)
-- ✅ Model has ≥5 communication links and ≥4 data assets
-- ✅ Threagile run completes; risks generated
-- ✅ Three auth-specific risks identified that are NOT in baseline's top-5
-- ✅ Each named with rule ID + STRIDE letter + 1-2 sentence mitigation
-
----
-
-## Rubric
-
-| Task | Points | Criteria |
-|------|-------:|----------|
-| **Task 1** — Baseline | **6** | Risk counts table + top-5 + STRIDE mapping + trust-boundary observation (all from real Threagile output) |
-| **Task 2** — Secure variant | **4** | 4+ required hardening changes + diff table + 3 fixed + 2 still-firing explained + honesty check |
-| **Bonus Task** — Auth flow | **2** | Custom YAML written from scratch, 3 auth-specific risks identified beyond baseline |
-| **Total** | **12** | 10 main + 2 bonus |
-
----
+- Output directory must exist. Threagile prints `open .../risks.json: no such file or directory` and writes nothing if it does not.
+- `title:` longer than 31 characters kills the Excel step: you get the JSON and diagrams but no `risks.xlsx` and no `report.pdf`.
+- Protocol and encryption values are enums. `JDBC-encrypted` fails; `jdbc-encrypted` works. `-list-types` prints every valid value.
+- Risk titles in `risks.json` contain `<b>` tags. Strip them when pasting into your report.
+- The image tag is `threagile/threagile:0.9.1`, with no `v`. The binary inside reports version 1.0.0; that is expected.
+- More risks in the secure variant than in the baseline usually means you added an asset instead of editing one.
 
 ## Resources
 
-<details>
-<summary>📚 Documentation</summary>
-
-- [Threagile official site](https://threagile.io/) — Project + docs
-- [Threagile model reference](https://threagile.io/docs/model/) — Every YAML field with examples
-- [Threagile risk rules reference](https://threagile.io/docs/risks/) — All ~50 built-in rules
-- [OWASP Threat Modeling Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html) — STRIDE walkthrough
-- [STRIDE on Wikipedia](https://en.wikipedia.org/wiki/STRIDE_model) — Quick recap (lecture 2 slide 7)
-
-</details>
-
-<details>
-<summary>⚠️ Common Pitfalls</summary>
-
-- 🚨 **`docker: invalid reference format`** — make sure you wrote `threagile/threagile:0.9.1` not `threagile:v0.9.1` (no namespace).
-- 🚨 **Output directory empty after run** — Threagile needs write access. Verify the volume mount `-v "$(pwd)/labs/lab2":/app/work` and that `output/` exists with write perms before running.
-- 🚨 **`undefined protocol: xyz`** — Threagile validates protocol enums. Common typo: `JDBC-encrypted` (capitalized) — use lowercase `jdbc-encrypted`.
-- 🚨 **`the sheet name length exceeds the 31 characters limit`** — Threagile uses your model's `title:` as the Excel sheet name in `risks.xlsx`; Excel caps sheet names at 31 characters. Keep `title:` short (≤ 31 chars). The run dies at the Excel step, so you get JSONs and diagrams but no `risks.xlsx`/`report.pdf`. (The `Fontconfig error` lines are harmless noise — ignore them.)
-- 🚨 **PDF is huge / slow to open** — that's normal. Use `risks.json` + `jq` for fast iteration; open the PDF only for the final report.
-- 🚨 **Secure variant has MORE risks than baseline** — usually means you added a new asset without declaring its security requirements. Threagile rules can fire on new assets you accidentally introduced; review your diff carefully.
-- 🚨 **"My auth-flow model has 50 risks!"** — that's usually because you copied the baseline model and trimmed it. Build the auth model **from scratch** — minimum viable assets + links + data. Threagile rules multiply on under-specified models.
-- 💡 **PDF report front matter** shows the EXACT counts the rubric expects. If your submission says different numbers, re-run Threagile and check you opened the right output dir.
-
-</details>
-
-<details>
-<summary>🪜 Looking ahead</summary>
-
-The threat model you build here surfaces priorities for the rest of the course:
-- **Lab 3** (Secure Git) — STRIDE-R (Repudiation) → signed commits + audit trail
-- **Lab 5** (SAST/DAST) — focuses on the categories your top-5 highlighted
-- **Lab 6** (IaC) — over-privileged IAM and network exposure (top hits Threagile usually finds)
-- **Lab 9** (Runtime) — Falco rules for the behaviors your threat model said were highest-impact
-
-Keep your `threagile-model.yaml` in mind through the semester. A good threat model is a guide for what to scan + monitor first.
-
-</details>
+- [Threagile documentation](https://threagile.io/) and the [model reference](https://threagile.io/docs/model/)
+- [Threagile risk rules](https://threagile.io/docs/risks/), the rule IDs in `category`
+- [OWASP Threat Modeling Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Threat_Modeling_Cheat_Sheet.html)
+- [Threat Modeling Manifesto](https://www.threatmodelingmanifesto.org/)
