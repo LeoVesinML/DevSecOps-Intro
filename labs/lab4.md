@@ -42,7 +42,7 @@ You need:
 - **Docker** (Juice Shop image already pulled from Lab 1; if not: `docker pull bkimminich/juice-shop:v20.0.0`)
 - **`syft`** — `brew install syft` or [GitHub releases](https://github.com/anchore/syft/releases) (course pins Syft 1.x latest stable)
 - **`grype`** — `brew install grype` or [GitHub releases](https://github.com/anchore/grype/releases) (course pins Grype 0.x latest stable)
-- **`trivy`** — `brew install trivy` (course pins **Trivy v0.69.x** as of April 2026)
+- **`trivy`** — `brew install trivy` (course pins **Trivy v0.74.x**, verified September 2026)
 - **`jq`** — for JSON inspection
 
 ```bash
@@ -207,10 +207,10 @@ Pick **two specific CVEs** that ONE tool found and the other didn't. For each:
 ### B.1: Verify CycloneDX schema compliance
 
 ```bash
-# CycloneDX spec version (Lab 8 + Cosign expect 1.5 or 1.6 in 2026)
+# CycloneDX spec version. Syft 1.51 emits 1.7 by default; Cosign accepts it
 jq '.specVersion, .bomFormat' labs/lab4/juice-shop.cdx.json
 # Should print:
-# "1.5" (or "1.6")
+# "1.7" (1.5 and 1.6 are also fine)
 # "CycloneDX"
 
 # CycloneDX requires a metadata.timestamp and metadata.tools section — verify
@@ -219,11 +219,11 @@ jq '.metadata.timestamp, .metadata.tools' labs/lab4/juice-shop.cdx.json
 
 ### B.2: Re-run Syft if needed
 
-If `specVersion` came back below 1.5 (older Syft versions defaulted to 1.4), force a newer version:
+If `specVersion` came back below 1.5 (Syft versions before 1.10 defaulted to 1.4), ask for a specific one:
 
 ```bash
 syft bkimminich/juice-shop:v20.0.0 \
-  -o "cyclonedx-json@1.5=labs/lab4/juice-shop.cdx.json"
+  -o "cyclonedx-json@1.6=labs/lab4/juice-shop.cdx.json"
 ```
 
 ### B.3: Validate the attestation predicate shape
@@ -338,7 +338,7 @@ PR checklist body:
 - [Syft documentation](https://github.com/anchore/syft/wiki) — Supported formats, image targets, output options
 - [Grype documentation](https://github.com/anchore/grype/wiki) — Including the SBOM-input pattern
 - [Trivy documentation](https://trivy.dev/) — Six targets including image, fs, sbom, k8s
-- [CycloneDX 1.5 spec](https://cyclonedx.org/specification/overview/) — What `specVersion: "1.5"` actually requires
+- [CycloneDX spec](https://cyclonedx.org/specification/overview/) — what `specVersion` actually requires
 - [in-toto Statement v1](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md) — The envelope shape for the bonus
 
 </details>
@@ -350,7 +350,7 @@ PR checklist body:
 - 🚨 **Grype prints 0 vulnerabilities** — Juice Shop v20.0.0 has CVEs; if Grype reports 0, your DB is fresh-empty. Run `grype db update` and re-scan.
 - 🚨 **Grype results differ between runs** — the CVE DB updates daily. Lock down with `--by-cve` or take a snapshot and reference the exact db checksum in your submission.
 - 🚨 **Trivy "image not found" but the image is in `docker images`** — Trivy uses a local cache too. `trivy image --download-db-only` first.
-- 🚨 **CycloneDX `specVersion: "1.4"`** — older Syft versions default to 1.4; Lab 8 + Cosign expect 1.5+. Use `cyclonedx-json@1.5` syntax.
+- 🚨 **CycloneDX `specVersion` older than 1.5** — only on Syft below 1.10. Ask for a version explicitly with the `cyclonedx-json@1.6` output syntax. Current Syft emits 1.7 and Cosign attests it unchanged (verified with Cosign 3.0.2).
 - 🚨 **`docker inspect ... RepoDigests` is empty** — happens when you built the image locally instead of pulling it. Re-pull with `docker pull bkimminich/juice-shop:v20.0.0` to get the registry digest.
 - 💡 **Top-10 by severity is alphabetic ordering** — `jq 'sort_by(.severity)'` sorts strings, so "Critical" comes before "High" alphabetically (which is correct), but "Negligible" sorts before "Critical" because of the N. Use a manual ordering or `--severity-cutoff` filter.
 

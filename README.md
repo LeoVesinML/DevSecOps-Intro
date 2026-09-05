@@ -86,18 +86,18 @@ All tools free and open-source (or have a meaningful free tier). [`tools/version
 | Containers | Docker / Docker Compose | 28.x | Week 1 |
 | Threat modeling | Threagile | 0.9.1 (Jul 2024, latest release) | Week 2 |
 | Pre-commit framework | pre-commit | latest | Week 3 |
-| Secret scanning | gitleaks | 8.21.x | Week 3 |
+| Secret scanning | gitleaks | 8.30.x | Week 3 |
 | History rewrite | git-filter-repo | 2.45+ | Week 3 |
-| SBOM | Syft | 1.41.x | Week 4 |
-| SCA | Grype | 0.107.x | Week 4 |
-| Multi-purpose scanner | Trivy | 0.69.x | Week 4, 6, 7 |
-| SAST | Semgrep CE | 1.157.x | Week 5 |
-| DAST | OWASP ZAP | stable (Checkmarx-maintained) | Week 5 |
-| IaC scanning (Terraform) | Checkov | 3.2.x | Week 6 |
+| SBOM | Syft | 1.51.x | Week 4 |
+| SCA | Grype | 0.118.x | Week 4 |
+| Multi-purpose scanner | Trivy | 0.74.x | Week 4, 6, 7 |
+| SAST | Semgrep CE | 1.176.x | Week 5 |
+| DAST | OWASP ZAP | 2.17.x via the `stable` tag | Week 5 |
+| IaC scanning (Terraform) | Checkov | 3.3.x | Week 6 |
 | IaC scanning (Ansible/Pulumi) | KICS | latest | Week 6 |
-| Kubernetes | k3d (k3s in Docker) | v5.8.3 / k3s v1.31.x | Week 7 |
-| Policy-as-Code | Conftest + OPA Rego | 0.68.x / 1.15.x | Week 7, 9 |
-| Supply chain | Cosign | v3.0.x | Week 8 |
+| Kubernetes | k3d (k3s in Docker) | v5.9.0 / k3s v1.31.x | Week 7 |
+| Policy-as-Code | Conftest + OPA Rego | 0.69.x / 1.15.x | Week 7, 9 |
+| Supply chain | Cosign | v3.0.x (not 3.1: see versions.yaml) | Week 8 |
 | Local registry | Distribution | v3 | Week 8 |
 | Runtime detection | Falco | 0.43.x | Week 9 |
 | Vulnerability mgmt | DefectDojo | v2.58.x | Week 10 |

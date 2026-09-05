@@ -64,13 +64,15 @@ def main():
             rows.append((name, pin, "?", "lookup failed: " + err, spec.get("labs", [])))
             continue
         pinned_v, upstream_v = normalise(pin), normalise(upstream)
+        held = bool(spec.get("hold"))
         if pin == "latest":
             state = "unpinned"
         elif pinned_v and upstream_v and pinned_v == upstream_v:
             state = "current"
         elif pinned_v and upstream_v and pinned_v < upstream_v:
-            state = "DRIFTED"
-            drifted += 1
+            # A documented hold is a decision, not drift: it must not page anyone.
+            state = "held" if held else "DRIFTED"
+            drifted += 0 if held else 1
         else:
             state = "check by hand"
         rows.append((name, pin, upstream, state, spec.get("labs", [])))
@@ -81,7 +83,10 @@ def main():
         print("%-12s %-12s %-12s %-14s %s" % ("TOOL", "PINNED", "LATEST", "STATE", "LABS"))
         for name, pin, upstream, state, labs in rows:
             print("%-12s %-12s %-12s %-14s %s" % (name, pin, upstream, state, ",".join(str(x) for x in labs)))
-        print("\nchecked %s, %d drifted" % (manifest.get("checked", "?"), drifted))
+        held_names = [n for n, spec in manifest.get("tools", {}).items() if spec.get("hold")]
+        print("\nchecked %s, %d drifted, %d held" % (manifest.get("checked", "?"), drifted, len(held_names)))
+        if held_names:
+            print("held on purpose (see the hold: note in versions.yaml): %s" % ", ".join(sorted(held_names)))
         if drifted:
             print("Re-pin before the next cohort; mid-semester only if a pin is broken.")
     return 1 if drifted else 0

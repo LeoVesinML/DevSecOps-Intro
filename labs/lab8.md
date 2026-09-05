@@ -42,14 +42,14 @@ In this lab you will practice:
 
 You need:
 - **Docker**
-- **Cosign v3.x** — `brew install cosign` or [GitHub releases](https://github.com/sigstore/cosign/releases) (course pins v2.4.x as of April 2026)
+- **Cosign v3.0.x** — `brew install cosign` or [GitHub releases](https://github.com/sigstore/cosign/releases). Do **not** use 3.1.x for this lab: it removed support for `--tlog-upload=false`, which every command below relies on.
 - **`jq`**
 
 ```bash
 git switch main && git pull
 git switch -c feature/lab8
 
-cosign version    # Should print 2.x.x
+cosign version    # Should print 3.0.x
 docker --version
 
 mkdir -p labs/lab8/keys labs/lab8/results
@@ -76,9 +76,12 @@ docker pull bkimminich/juice-shop:v20.0.0
 docker tag bkimminich/juice-shop:v20.0.0 localhost:5000/juice-shop:v20.0.0
 docker push localhost:5000/juice-shop:v20.0.0
 
-# Capture the registry digest — you'll sign this, not the tag
+# Capture the registry digest — you'll sign this, not the tag.
+# The image now has TWO repo digests: the Docker Hub one it was pulled with and
+# the local one it was just pushed to. Take the local one.
 docker inspect localhost:5000/juice-shop:v20.0.0 \
-  --format '{{index .RepoDigests 0}}' > labs/lab8/results/juice-shop-digest.txt
+  --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+  | grep '^localhost:5000/' > labs/lab8/results/juice-shop-digest.txt
 cat labs/lab8/results/juice-shop-digest.txt
 # Should be: localhost:5000/juice-shop@sha256:abc... (KEEP THIS — used in every step)
 ```
@@ -470,6 +473,9 @@ PR checklist body:
 
 <details>
 <summary>⚠️ Common Pitfalls</summary>
+
+- 🚨 **`{{index .RepoDigests 0}}` gives the Docker Hub digest, not the local one.** The image carries both after the push, and index 0 is whichever it was pulled with. Signing that reference makes Cosign talk to Docker Hub and fail on authentication. Filter for `localhost:5000/` as step 8.1 does.
+- 🚨 **Cosign 3.1.x removes `--tlog-upload=false`** and answers with a `--signing-config` error. This lab is verified on **3.0.2**; check `cosign version` before you start.
 
 - 🚨 **`cosign verify` fails with "unable to fetch image"** — make sure the registry is up: `docker ps | grep lab8-registry`. Also: Cosign expects HTTPS by default — for plain HTTP registries on localhost, add `--allow-http-registry` (Cosign 2.x).
 - 🚨 **`cosign sign` succeeds but `cosign verify` fails** — typically a tag-vs-digest mismatch. Always use the `@sha256:...` digest, NOT the `:v20.0.0` tag, in both commands.
