@@ -57,7 +57,7 @@ graph LR
 
 ## Lectures + Readings
 
-10 lectures plus two readings for the bonus labs. Every lecture ends with a Sources list; if a claim has no source there, open an issue.
+10 lectures, 17-25 slides each. Two readings replace lectures for the bonus labs.
 
 | # | Title | File |
 |--:|-------|------|
@@ -325,12 +325,6 @@ DevSecOps-Intro/
 - *"Sigstore: Software Signing for Everybody"* — Luke Hinds, KubeCon 2022
 
 </details>
-
----
-
-## How This Course Is Built
-
-Lectures and labs are drafted with AI assistance and then edited by the instructor. Every command in a lab is executed before it ships, every date, number and quote in a lecture points to a source listed at the end of the lecture, and tool versions are re-pinned each semester. If a command fails or a fact looks wrong, open an issue in this repo; it is the fastest way to get it fixed for everyone.
 
 ---
 
