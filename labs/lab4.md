@@ -113,16 +113,19 @@ Lab 8 will attach this SBOM to the image as a signed attestation. Cosign wraps a
 ```bash
 # YOUR TASK: write labs/lab4/juice-shop-attestation.json
 # Shape (in-toto Statement v1):
-#   _type          "https://in-toto.io/Statement/v1"
+#   _type          the in-toto Statement type Cosign emits
 #   subject[0].name   the image reference you scanned
 #   subject[0].digest {"sha256": "<the digest, without the sha256: prefix>"}
-#   predicateType  the CycloneDX BOM URL matching the specVersion you produced in 4.1
+#   predicateType  the CycloneDX predicate type Cosign uses for --type cyclonedx
 #   predicate      the entire contents of juice-shop.cdx.json
 #
 # Hints:
+#   - do not guess the two type strings. Cosign's CycloneDX predicate type is
+#     unversioned and its statement type is not v1; Lab 8 shows you how to read
+#     both out of a real attestation with
+#       cosign verify-attestation ... | jq -r '.payload | @base64d | fromjson'
 #   - the digest: docker inspect bkimminich/juice-shop:v20.0.0 --format '{{index .RepoDigests 0}}'
 #   - jq can build the whole file in one line; you do not need a script
-#   - in-toto Statement v1: https://slsa.dev/spec/v1.0/provenance
 ```
 
 **Submit**, section `## Bonus`:
@@ -135,19 +138,19 @@ Lab 8 will attach this SBOM to the image as a signed attestation. Cosign wraps a
 
 <!-- verify:skip student fork files -->
 ```bash
-git add labs/lab4/juice-shop.cdx.json submissions/lab4.md
+git add labs/lab4/juice-shop.cdx.json labs/lab4/juice-shop.spdx.json submissions/lab4.md
 git add labs/lab4/juice-shop-attestation.json   # bonus only
 git commit -m "feat(lab4): juice shop SBOM + grype and trivy comparison"
 git push -u origin feature/lab4
 ```
 
-The CycloneDX file is about 2 MB and Lab 8 needs it, so it is committed on purpose. The scan outputs are not: leave `grype-from-sbom.*`, `trivy.json` and the SPDX file out of the PR and paste the numbers instead.
+Both SBOMs are committed: Lab 8 signs the CycloneDX one, and the SPDX one is your evidence for the format-comparison answer. The scan outputs are not: leave `grype-from-sbom.*` and `trivy.json` out of the PR and paste the numbers instead.
 
 ## Acceptance criteria
 
 - Task 1 (6): both SBOMs generated, counts and `specVersion` reported from the actual files; the format-difference answer names a concrete reason; severity table matches the JSON; ten findings listed with package, version and fix column; the triage answer uses both fix availability and severity.
 - Task 2 (4): Trivy scan present; side-by-side table with deltas; one divergent identifier in each direction with a plausible cause; the decoupled-versus-all-in-one answer refers to what Lab 8 does with the SBOM.
-- Bonus (2): `juice-shop-attestation.json` has the four required fields, a real digest, and a `predicateType` matching the SBOM's own `specVersion`; the answer says what the attestation does not prove.
+- Bonus (2): `juice-shop-attestation.json` has the four required fields, a real digest, and the two type strings Cosign actually uses rather than invented ones; the answer says what the attestation does not prove.
 
 ## Common pitfalls
 

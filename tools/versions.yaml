@@ -127,13 +127,16 @@ tools:
       Rewriting the lab for signing configs is the prerequisite for that bump.
 
   falco:
-    pin: "0.43.0"
+    pin: "0.43.1"
     labs: [9]
     github: falcosecurity/falco
     verified: recorded
+    verified: >
+      2026-09-06 on a WSL2 kernel with BTF: both built-in detections fired, a
+      custom rule reloaded with SIGHUP fired, and an outbound-port rule fired on
+      a refused connection
     hold: >
-      0.44.1 is out. Falco needs a host kernel with modern eBPF, so it has to be
-      verified on a real Linux host rather than in this environment.
+      0.44.1 is out and needs the same run before the bump.
 
   defectdojo:
     pin: "2.58.3"

@@ -127,7 +127,8 @@ The first few requests reach Juice Shop and get a 401; then the limit takes over
 
 - The sequence of status codes, and the exact rate and burst you configured.
 - Your cipher configuration and the proof that a suite outside it is refused.
-- Your timeout values, with a sentence on what each one protects against.
+- Your timeout values, with a sentence on what each one protects against, and one command that shows a timeout actually firing rather than just being configured.
+- Two or three sentences on OCSP stapling: what it saves the client, and why you would or would not enable it here.
 - A cert rotation runbook: the steps, in order, to replace the certificate with zero failed requests. Include how you verify the new one is live.
 - Three or four sentences: your rate limit is per client address. Name two ways an attacker gets around that, and what you would add at this layer or above it.
 
@@ -171,7 +172,7 @@ Do not commit `labs/lab11/reverse-proxy/certs/` or `labs/lab11/logs/`. Clean up 
 ## Acceptance criteria
 
 - Task 1 (4): redirect proven with its status code; TLS 1.3 protocol and suite shown; a scanner's protocol table showing 1.0 and 1.1 not offered; all six headers present in the response; the CSP answer describes a path to enforcement.
-- Task 2 (4): the status-code sequence shows the limit engaging and returns 429; a suite outside your list is refused; timeouts explained individually; the rotation runbook is ordered and includes verification; the bypass answer names two concrete techniques.
+- Task 2 (4): the status-code sequence shows the rate limit engaging and returning 429; a per-address connection limit is configured; a cipher suite outside your list is refused; each timeout explained; the rotation runbook is ordered and includes verification; the bypass answer names two concrete techniques.
 - Bonus (2): the same payload compared through both paths with status codes; a real CRS rule id from the log; a false-positive hunt with a result either way; a rollout plan that does not start in blocking mode.
 
 ## Common pitfalls

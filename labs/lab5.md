@@ -40,6 +40,7 @@ Provided in `labs/lab5/scripts/`: [`zap-auth.yaml`](lab5/scripts/zap-auth.yaml),
 
 ### 5.1 Unauthenticated baseline
 
+<!-- verify:nonzero-ok zap-baseline exits non-zero when it finds anything -->
 ```bash
 docker run --rm --network lab5-net -v "$(pwd)/labs/lab5/results:/zap/wrk" \
   ghcr.io/zaproxy/zaproxy:stable \
@@ -50,6 +51,7 @@ Two to three minutes. It ends with a `FAIL-NEW / WARN-NEW / PASS` line and exits
 
 ### 5.2 Authenticated full scan
 
+<!-- verify:skip a 10-20 minute active scan; run it by hand -->
 ```bash
 docker run --rm --network lab5-net -e _JAVA_OPTIONS="-Xmx512m" \
   -v "$(pwd)/labs/lab5:/zap/wrk" \
@@ -61,6 +63,7 @@ Ten to twenty minutes: it logs in as `admin@juice-sh.op`, spiders the authentica
 
 ### 5.3 Compare
 
+<!-- verify:skip needs both reports from 5.1 and 5.2 -->
 ```bash
 bash labs/lab5/scripts/compare_zap.sh \
   labs/lab5/results/baseline-report.json labs/lab5/results/auth-report.json
@@ -88,6 +91,7 @@ Pin the clone to the container's tag: scanning `main` while attacking v20.0.0 ma
 
 ### 5.5 Scan
 
+<!-- verify:skip needs the clone from 5.4 and takes several minutes -->
 ```bash
 semgrep --config=p/owasp-top-ten --config=p/javascript --config=p/secrets \
   --severity ERROR --severity WARNING \
@@ -97,6 +101,7 @@ semgrep --config=p/owasp-top-ten --config=p/javascript --config=p/secrets \
 
 Three to five minutes. Parse timeouts and syntax errors on some files are expected here and do not invalidate the run.
 
+<!-- verify:skip needs the scan output from 5.5 -->
 ```bash
 jq '[.results[].extra.severity] | group_by(.) | map({severity: .[0], count: length})' \
   labs/lab5/results/semgrep.json
@@ -116,6 +121,7 @@ jq '.errors | length' labs/lab5/results/semgrep.json
 
 The strongest finding is one both tools reach independently: a line of code and a working request against the running app.
 
+<!-- verify:skip needs both reports -->
 ```bash
 jq -r '[.site[].alerts[] | select(.riskcode|tonumber >= 2) | .name + " -> " + .instances[0].uri] | unique[]' \
   labs/lab5/results/auth-report.json
@@ -142,7 +148,7 @@ Do not commit `labs/lab5/results/` or the source clone; paste the numbers instea
 
 ## Acceptance criteria
 
-- Task 1 (6): both reports exist; counts by risk level for each, taken from the JSON; the ratio computed from your own numbers; two authenticated-only alerts with URLs and a reachability reason each; the CI answer addresses coverage, not tooling.
+- Task 1 (6): both reports exist; counts by risk level for each, taken from the JSON; the totals and the highest risk level compared across the two runs; two authenticated-only alerts with URLs and a reachability reason each; the CI answer addresses coverage, not tooling.
 - Task 2 (4): severity split, rule table and error count from the actual run; a workflow-file rule connected to Lecture 4; a false positive identified by file, line and rule with code-specific reasoning; a one-rule fix argued.
 - Bonus (2): at least one row where both tools point at the same behaviour, with the source lines, the request, and a concrete fix.
 

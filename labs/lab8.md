@@ -7,7 +7,7 @@
 
 > **Goal:** Sign the Juice Shop image in a local registry, prove a swapped image fails verification, attach the Lab 4 SBOM as a signed attestation, and sign a release artifact the way the Codecov incident should have been prevented.
 > **Deliverable:** A PR from `feature/lab8` with `submissions/lab8.md` and `labs/lab8/keys/cosign.pub`. Submit the PR link via Moodle.
-> **Builds on:** the SBOM and digest from Lab 4. **Used by:** Lab 9 checks signatures at admission; Lab 10 imports the attestation.
+> **Builds on:** the SBOM from Lab 4.
 
 ## Setup
 
@@ -69,23 +69,31 @@ cosign verify --key labs/lab8/keys/cosign.pub \
 
 <!-- verify:skip needs the signature from 8.2 -->
 ```bash
+# Overwrite the tag you signed. This is the attack: same name, different image.
 docker pull alpine:3.20
-docker tag alpine:3.20 localhost:5000/juice-shop:v20.0.0-tampered
-docker push localhost:5000/juice-shop:v20.0.0-tampered
+docker tag alpine:3.20 localhost:5000/juice-shop:v20.0.0
+docker push localhost:5000/juice-shop:v20.0.0
 
-TAMPERED=$(docker inspect localhost:5000/juice-shop:v20.0.0-tampered \
+# The tag now resolves to a different digest
+TAMPERED=$(docker inspect localhost:5000/juice-shop:v20.0.0 \
   --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep '^localhost:5000/')
+echo "signed:  $(cat labs/lab8/results/juice-shop-digest.txt)"
+echo "now:     $TAMPERED"
 
 cosign verify --key labs/lab8/keys/cosign.pub --insecure-ignore-tlog \
   --allow-insecure-registry "$TAMPERED" 2>&1 \
   | tee labs/lab8/results/verify-tampered.txt
+
+# And the digest you signed still verifies, because a signature is not a tag
+cosign verify --key labs/lab8/keys/cosign.pub --insecure-ignore-tlog \
+  --allow-insecure-registry "$(cat labs/lab8/results/juice-shop-digest.txt)"
 ```
 
 **Submit** in `submissions/lab8.md`, section `## Task 1`:
 
 - The digest you signed, and how you picked it out of the two the image carries.
 - The successful `cosign verify` output.
-- The failure on the swapped image, quoted exactly.
+- The failure on the swapped image, quoted exactly, and the proof that the original digest still verifies afterwards.
 - Three or four sentences: the tag `v20.0.0` now points at a different image than the one you signed, and Cosign noticed. Explain to someone who has not done this lab what the signature is actually bound to, and what would have happened if signatures were bound to tags instead.
 
 ## Task 2 — Attach the SBOM as an attestation (4 pts)
@@ -110,9 +118,36 @@ jq '.components | length' labs/lab4/juice-shop.cdx.json
 jq '.components | length' labs/lab8/results/sbom-from-attestation.json
 ```
 
+Then attach a second attestation of a different kind, so you have seen that the
+predicate is yours to choose:
+
+<!-- verify:skip needs the key pair -->
+```bash
+cat > /tmp/provenance.json <<'JSON'
+{
+  "builder": { "id": "https://localhost/lab8-student" },
+  "buildType": "https://example.com/lab8/local-build",
+  "invocation": { "configSource": { "uri": "https://github.com/<you>/DevSecOps-Intro" } }
+}
+JSON
+
+COSIGN_PASSWORD="<your passphrase>" cosign attest \
+  --key labs/lab8/keys/cosign.key --type slsaprovenance \
+  --predicate /tmp/provenance.json \
+  --tlog-upload=false --allow-insecure-registry --yes "$DIGEST"
+
+cosign verify-attestation --key labs/lab8/keys/cosign.pub \
+  --insecure-ignore-tlog --allow-insecure-registry --type slsaprovenance "$DIGEST" \
+  | jq -r '.payload | @base64d | fromjson | .predicateType'
+```
+
+`--type slsaprovenance` expects only the predicate body. Cosign wraps it in the
+statement itself, which is why the file above has no `_type` or `subject`.
+
 **Submit**, section `## Task 2`:
 
 - Both component counts, which must match.
+- The `predicateType` of each of your two attestations, read out of the verified payload rather than from this page.
 - The decoded statement's `_type`, `subject` and `predicateType`, and where each came from: which values you supplied and which Cosign filled in.
 - Three or four sentences: it is the morning after the next Log4Shell. You have two thousand images in your registry. What does this attestation let you do that a signature alone does not, and what still has to be true for that to work at three in the morning?
 
@@ -156,8 +191,8 @@ Never commit `cosign.key`. Clean up with `docker rm -f lab8-registry`.
 
 ## Acceptance criteria
 
-- Task 1 (6): the signed digest is the local-registry one; `cosign verify` succeeds on it; the swapped image fails with the error quoted; the explanation states what the signature binds to.
-- Task 2 (4): attestation attached and verified; the extracted SBOM has the same component count as Lab 4's; the statement fields are explained by origin; the incident-response answer names a precondition, not just a benefit.
+- Task 1 (6): the signed digest is the local-registry one; `cosign verify` succeeds on it; the tag is overwritten and verification of the new digest fails with the error quoted; the original digest still verifies; the explanation states what the signature binds to.
+- Task 2 (4): both attestations attached and verified; the extracted SBOM has the same component count as Lab 4's; both `predicateType` values quoted from the payload; the statement fields explained by origin; the incident-response answer names a precondition, not just a benefit.
 - Bonus (2): `Verified OK` before and a signature failure after modification, both quoted; the distribution answer identifies the key-distribution problem.
 
 ## Common pitfalls

@@ -73,6 +73,7 @@ The file must be named `Dockerfile`, in a directory you point Trivy at. Named `D
 **Submit** in `submissions/lab7.md`, section `## Task 1`:
 
 - Vulnerability counts by severity, and how many of the HIGH and CRITICAL ones have a fix.
+- The same image was scanned by Grype in Lab 4. Put the two totals side by side and explain the difference in one or two sentences; if you no longer have Lab 4's numbers, say so rather than inventing them.
 - The ten rows from 7.2.
 - The Dockerfile findings with their `DS-*` ids, and what each one would let an attacker do.
 - Three or four sentences: your image has vulnerabilities with no fix available. What do you do about those, and what would you tell a manager who asks why the number is not zero?
@@ -107,7 +108,8 @@ The `restricted` Pod Security Standard is the strictest of the three profiles Ku
 #   - container securityContext: allowPrivilegeEscalation false, capabilities
 #     drop ALL
 #   - requests and limits for cpu and memory
-#   - the image pinned by the digest you captured in Lab 4
+#   - the image pinned by digest, not by tag. Get it with:
+#       docker inspect bkimminich/juice-shop:v20.0.0 --format '{{index .RepoDigests 0}}'
 # Hints:
 #   - the image already runs as a non-root user. Find which one:
 #     docker inspect bkimminich/juice-shop:v20.0.0 --format '{{.Config.User}}'
@@ -203,8 +205,8 @@ Clean up: `k3d cluster delete lab7`.
 
 ## Acceptance criteria
 
-- Task 1 (6): image scan completed; severity counts and the fix-available split; ten fixable findings ranked; Dockerfile findings with `DS-*` ids and impact; the no-fix answer proposes something other than waiting.
-- Task 2 (4): namespace enforces `restricted`; the pod runs and is Ready under it; `runAsUser` matches the image's real user; both Trivy summaries present with the misconfiguration difference explained; one blocked thing and one voluntary control named.
+- Task 1 (6): image scan completed; severity counts and the fix-available split; the comparison against Lab 4's Grype totals, or an explicit statement that the numbers were not kept; ten fixable findings ranked; Dockerfile findings with `DS-*` ids and impact; the no-fix answer proposes something other than waiting.
+- Task 2 (4): namespace enforces `restricted`; the Deployment uses its own ServiceAccount with token mounting disabled, sets requests and limits, and pins the image by digest; a NetworkPolicy exists with both policy types; the pod runs and is Ready; `runAsUser` matches the image's real user; both Trivy summaries present with the misconfiguration difference explained; one blocked thing and one voluntary control named.
 - Bonus (2): pod Ready with `readOnlyRootFilesystem: true` and serving 200; the write paths come from `docker diff`, not from guessing; the seeded directory problem is described and solved.
 
 ## Common pitfalls

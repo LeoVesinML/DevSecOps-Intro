@@ -26,9 +26,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 -m pip install --quiet pyyaml
+          # $? after a pipeline is tee's status, which is always 0. Capture the
+          # checker's own exit code instead, or the drift issue never opens.
           set +e
-          python3 tools/check-versions.py | tee report.txt
-          echo "drift=$?" >> "$GITHUB_OUTPUT"
+          python3 tools/check-versions.py > report.txt
+          drift=$?
+          set -e
+          cat report.txt
+          echo "drift=$drift" >> "$GITHUB_OUTPUT"
       - name: Open or update the drift issue
         if: steps.check.outputs.drift != '0'
         env:

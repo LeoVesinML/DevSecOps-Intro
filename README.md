@@ -21,15 +21,15 @@ The course follows a **map → discover → write → ship → scan → harden �
 | 1 | Lab 1 | Foundations & SDLC | OWASP Top 10:2025, Juice Shop deploy, PR workflow |
 | 2 | Lab 2 | Threat Modeling | STRIDE, DFDs, trust boundaries, Threagile YAML |
 | 3 | Lab 3 | Secure Git | SSH commit signing, pre-commit gitleaks, history rewrite with `git filter-repo` |
-| 4 | Lab 4 | SBOM + SCA | Syft (CycloneDX 1.6 + SPDX), Grype, Trivy, sign-ready attestations |
+| 4 | Lab 4 | SBOM + SCA | Syft (CycloneDX 1.7 + SPDX), Grype, Trivy, sign-ready attestations |
 | 5 | Lab 5 | SAST + DAST | Semgrep (`p/owasp-top-ten`), ZAP baseline + authenticated, cross-tool correlation |
 | 6 | Lab 6 | IaC Security | Checkov 3.x on Terraform, KICS on Ansible + Pulumi, custom Checkov policies |
-| 7 | Lab 7 | Container/K8s | Trivy image scan, Pod Security Standards (`restricted`), securityContext, NetworkPolicy, Conftest gate |
-| 8 | Lab 8 | Supply Chain | Cosign v3 sign + verify + tamper demo, SBOM/SLSA attestations, `cosign sign-blob` |
+| 7 | Lab 7 | Container/K8s | Trivy image and Dockerfile scan, Pod Security Standards (`restricted`), securityContext, NetworkPolicy, read-only root filesystem |
+| 8 | Lab 8 | Supply Chain | Cosign 3.0 sign + verify + tag-overwrite demo, CycloneDX and SLSA attestations, `cosign sign-blob` |
 | 9 | Lab 9 | Runtime + PaC | Falco (modern eBPF), custom rules, Conftest/Rego policies at CI time |
-| 10 | Lab 10 | Vulnerability Management | DefectDojo capstone — import all prior labs, dedup, SLA matrix, MTTR/age, 5-min walkthrough |
+| 10 | Lab 10 | Vulnerability Management | DefectDojo capstone — import labs 4-7, dedup, SLA configuration, finding age and SLA compliance, 5-min walkthrough |
 | — | Lab 11 | Edge Hardening *(bonus)* | Nginx TLS 1.3, security headers, rate limiting, cert rotation; bonus: Coraza WAF + OWASP CRS |
-| — | Lab 12 | VM Sandboxing *(bonus)* | Kata Containers, runc-vs-VM isolation, perf benchmark; bonus: real container-escape PoC blocked by Kata |
+| — | Lab 12 | VM Sandboxing *(bonus)* | Kata Containers, runc-vs-VM isolation, perf benchmark; bonus: a privileged-container escape stopped by the guest kernel |
 
 ---
 
@@ -95,11 +95,11 @@ All tools free and open-source (or have a meaningful free tier). [`tools/version
 | DAST | ZAP (ex-OWASP, now Checkmarx) | 2.17.x via the `stable` tag | Week 5 |
 | IaC scanning (Terraform) | Checkov | 3.3.x | Week 6 |
 | IaC scanning (Ansible/Pulumi) | KICS | latest | Week 6 |
-| Kubernetes | k3d (k3s in Docker) | v5.9.0 / k3s v1.31.x | Week 7 |
+| Kubernetes | k3d (k3s in Docker) | v5.9.0 / k3s v1.33.x | Week 7 |
 | Policy-as-Code | Conftest + OPA Rego | 0.69.x / 1.15.x | Week 7, 9 |
 | Supply chain | Cosign | v3.0.x (not 3.1: see versions.yaml) | Week 8 |
 | Local registry | Distribution | v3 | Week 8 |
-| Runtime detection | Falco | 0.43.x | Week 9 |
+| Runtime detection | Falco | 0.43.1 | Week 9 |
 | Vulnerability mgmt | DefectDojo | v2.58.x | Week 10 |
 | Bonus: Edge | Nginx | stable-alpine | Lab 11 |
 | Bonus: VM sandbox | Kata Containers | 4.1.x | Lab 12 |

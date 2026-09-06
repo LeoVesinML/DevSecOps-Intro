@@ -7,13 +7,13 @@
 
 > **Goal:** Put nine weeks of scanner output into one system, make the duplicates collapse, decide what the deadlines are, and write the report a manager would act on.
 > **Deliverable:** A PR from `feature/lab10` with `submissions/lab10.md` and, for the bonus, `submissions/lab10-walkthrough.md`. Submit the PR link via Moodle.
-> **Builds on:** the scan outputs from Labs 4 to 9.
+> **Builds on:** the scan outputs from Labs 4 to 7. Labs 8 and 9 produce evidence DefectDojo has no parser for; you will account for that in Task 1.
 
 ## Setup
 
 - Docker Compose and about 4 GB of free memory: DefectDojo runs six containers.
 - `jq` and `curl`.
-- The reports from earlier labs. Regenerate any you deleted; the importer skips what it cannot find and tells you which.
+- The reports from Labs 4 to 7. Regenerate any you deleted; the importer skips what it cannot find and tells you which.
 
 <!-- verify:skip student fork branch -->
 ```bash
@@ -80,9 +80,12 @@ Note the product type name that came back. On a stock instance the first one is 
 
 <!-- verify:skip needs the token and the earlier labs' reports -->
 ```bash
-source labs/lab10/imports/env.sample     # then edit DD_TOKEN in your shell
 bash labs/lab10/imports/run-imports.sh
 ```
+
+`DD_URL` and `DD_TOKEN` from 10.2 are what the importer reads. Do not `source
+env.sample` after that step: it would put the placeholder token back over yours.
+The file is a reference for the variables the script accepts.
 
 The importer discovers the parser names from your instance, imports every report it finds, prints the finding count per file, and exits non-zero if any import failed. Expect `SKIP` lines for reports you did not keep.
 
@@ -141,7 +144,8 @@ A stock instance ships `critical=7 high=30 medium=90 low=120` days. Change it, i
 
 - Your SLA numbers next to the defaults, with a sentence per row on why yours differ.
 - Active findings by severity and by source tool.
-- The oldest active finding and its age. What does that number tell a reader that the severity counts do not?
+- Three numbers, with the query or calculation you used for each: the median age of active findings, the age of the oldest one, and the share of active findings currently inside their SLA.
+- One sentence on what Labs 8 and 9 produced that none of these numbers include, and what you would do about that.
 - Any finding you would risk-accept, with an expiry date and the compensating control. "We will not fix this" without a date is not a decision.
 - An executive summary of three sentences: where the project stands, the single biggest risk, and what you need in order to close it.
 
@@ -157,7 +161,8 @@ Constraints: five minutes spoken, roughly 700 words. It must cover what you buil
 
 <!-- verify:skip student fork files -->
 ```bash
-git add submissions/lab10.md submissions/lab10-walkthrough.md
+git add submissions/lab10.md
+git add submissions/lab10-walkthrough.md   # bonus only
 git commit -m "feat(lab10): defectdojo capstone + governance report"
 git push -u origin feature/lab10
 ```
@@ -167,7 +172,7 @@ Do not commit `labs/lab10/work/` or the importer's response files. Clean up with
 ## Acceptance criteria
 
 - Task 1 (6): DefectDojo running at the pinned version; every available report imported with its parser and count; severity totals from the API; two duplicate titles judged with reasoning; the which-lab-mattered answer names labs and reasons.
-- Task 2 (4): SLA numbers changed and defended against the defaults; findings broken down by severity and tool; the oldest finding's age interpreted; a risk acceptance with an expiry and a compensating control; a three-sentence summary that a manager could act on.
+- Task 2 (4): SLA numbers changed and defended against the defaults; findings broken down by severity and tool; median age, oldest age and SLA compliance each reported with the method used; the gap left by Labs 8 and 9 acknowledged; a risk acceptance with an expiry and a compensating control; a three-sentence summary that a manager could act on.
 - Bonus (2): the walkthrough exists, fits five minutes, and contains a traced finding and a failure, not a tool list.
 
 ## Common pitfalls

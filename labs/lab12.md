@@ -76,6 +76,8 @@ sudo nerdctl run --rm --runtime=io.containerd.kata.v2 alpine:3.20 \
 for rt in runc kata; do
   [ "$rt" = kata ] && FLAG="--runtime=io.containerd.kata.v2" || FLAG=""
   echo "== $rt startup =="
+  # One warm-up that is thrown away, then five timed runs
+  sudo nerdctl run --rm $FLAG alpine:3.20 true >/dev/null 2>&1
   for i in 1 2 3 4 5; do
     /usr/bin/time -f '%e' sudo nerdctl run --rm $FLAG alpine:3.20 true 2>&1 | tail -1
   done
@@ -84,15 +86,17 @@ done | tee labs/lab12/results/startup.txt
 for rt in runc kata; do
   [ "$rt" = kata ] && FLAG="--runtime=io.containerd.kata.v2" || FLAG=""
   echo "== $rt io =="
+  # Write to the container's filesystem, not /dev/null: the point is to cross
+  # the storage layer, which is where a VM-backed runtime differs from runc
   sudo nerdctl run --rm $FLAG alpine:3.20 \
-    sh -c 'dd if=/dev/zero of=/dev/null bs=1M count=1024 2>&1 | tail -1'
+    sh -c 'dd if=/dev/zero of=/tmp/bench bs=1M count=512 conv=fsync 2>&1 | tail -1'
 done | tee labs/lab12/results/io.txt
 ```
 
 **Submit**, section `## Task 2`:
 
-- Five startup times per runtime, with the median for each. Report the median, not the mean: one cold start skews an average.
-- The I/O throughput figures.
+- Five startup times per runtime after the warm-up, with the median for each. Report the median, not the mean: one slow run skews an average.
+- The I/O throughput figures, and one sentence on why the benchmark writes to a file rather than to `/dev/null`.
 - Memory overhead per container, and how you measured it.
 - A table of three workloads from your own experience or the reading, each with a verdict: `runc`, Kata, or "needs more information", and one sentence of justification each.
 - Three or four sentences: your startup numbers differ by roughly an order of magnitude. For which class of workload does that number not matter at all, and why?
@@ -156,7 +160,7 @@ Undo the host changes when you are done: remove the `kata` runtime block from `/
 - No `/dev/kvm`, no Kata. Check first: the failure otherwise arrives several minutes into an install.
 - Kata is a containerd runtime, so `docker run --runtime=` will not reach it. Use `nerdctl`, or `ctr`, or Kubernetes with a RuntimeClass.
 - `configure-containerd-kata.sh` edits `/etc/containerd/config.toml`. Keep a copy: an invalid config leaves containerd refusing to start, which takes every container on the host with it.
-- The first Kata start is slow because the guest kernel and image are cold. Discard the first run before timing anything.
+- The first Kata start is slow because the guest kernel and image are cold, which is why the loop above throws one run away before timing five.
 - Timing with `time` includes `nerdctl` and containerd overhead, identically for both runtimes, which is why the comparison is still fair. Say so in your report rather than pretending you measured the runtime alone.
 - The installer used to resolve "latest", so two students could benchmark different Kata versions and compare numbers that were never comparable. It is pinned now; if you override it, say which version you used.
 

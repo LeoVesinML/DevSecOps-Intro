@@ -150,7 +150,7 @@ jq '[.[].results.failed_checks[]? | select(.check_id | startswith("CKV"))
 - The policy file and the rule in one sentence of plain English.
 - The JSON showing it firing, with the resources it caught.
 - The change to the Terraform that would make it pass, and confirmation that it then does.
-- Two or three sentences: what makes this rule yours rather than something Checkov should ship for everyone?
+- Two or three sentences: what makes this rule yours rather than something Checkov should ship for everyone? Name the incident, audit finding or internal standard it comes from.
 
 ## Submit
 

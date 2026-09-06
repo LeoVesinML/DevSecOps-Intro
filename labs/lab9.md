@@ -107,6 +107,15 @@ conftest test labs/lab9/manifests/k8s/juice-unhardened.yaml --policy labs/lab9/p
 
 The hardened manifest passes 30 checks; the unhardened one fails 8 with 2 warnings. Match each failure to its rule in `labs/lab9/policies/k8s-security.rego`.
 
+The same directory also carries `compose-security.rego`, for the Compose file:
+
+```bash
+conftest test labs/lab9/manifests/compose/juice-compose.yml \
+  --policy labs/lab9/policies --all-namespaces
+```
+
+That one passes all 15 of its checks. A policy set that only ever reports failures teaches you nothing about whether it works, so note what it means that this file passes and the Kubernetes one did not.
+
 ### 9.5 Extend the policy
 
 ```rego
@@ -131,7 +140,8 @@ conftest test /tmp/violates-my-policy.yaml --policy labs/lab9/policies --all-nam
 
 **Submit**, section `## Task 2`:
 
-- The pass and fail counts for both shipped manifests, and two failures mapped to their Rego rules.
+- The pass and fail counts for both Kubernetes manifests and for the Compose file, and two failures mapped to their Rego rules.
+- One sentence on why the same requirement needs a separate rule for Compose and for Kubernetes, and one on what the Compose file passing tells you.
 - Your policy file and the manifest you wrote to violate it, with both runs.
 - Three or four sentences: the same requirement can be a Conftest rule in CI or a Falco rule at runtime. For the control you just wrote, which one would you keep if you could only have one, and what does the other one still buy you?
 
@@ -182,7 +192,7 @@ Clean up: `docker rm -f falco lab9-target`.
 ## Acceptance criteria
 
 - Task 1 (6): Falco running with both built-in rules triggered and quoted; a custom rule that fires, with its JSON; one incident-relevant JSON field named; a concrete false-positive scenario with a tuning plan.
-- Task 2 (4): both shipped manifests tested with counts; two failures mapped to Rego rules; your own deny and warn rules passing the hardened manifest and failing a manifest you wrote; the CI-versus-runtime answer commits to a choice.
+- Task 2 (4): both Kubernetes manifests and the Compose file tested with counts; two failures mapped to Rego rules; the Compose-versus-Kubernetes answer given; your own deny and warn rules passing the hardened manifest and failing a manifest you wrote; the CI-versus-runtime answer commits to a choice.
 - Bonus (2): a CRITICAL rule combining two signals, fired and quoted; the refused-connection explanation is correct; the evasion answer distinguishes cheap from expensive changes.
 
 ## Common pitfalls
