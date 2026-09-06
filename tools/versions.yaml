@@ -46,7 +46,9 @@ tools:
     pin: v1.51.1
     labs: [4]
     github: anchore/syft
-    verified: 2026-09-05, SBOM of the Juice Shop image, 2677 components
+    verified: >
+      2026-09-05 and 2026-09-06: SBOM of the pinned v20.0.0 image, 3069 CycloneDX
+      components and 909 SPDX packages (the 20.2.0 image gives 2677)
     note: emits CycloneDX specVersion 1.7 by default; Cosign 3.0.2 attests it unchanged
 
   grype:

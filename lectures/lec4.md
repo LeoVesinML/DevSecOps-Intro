@@ -7,7 +7,7 @@
 * 🗓️ **March 2020** — attackers (later attributed to APT29) inject **SUNBURST** into SolarWinds' Orion build server. They don't modify the source code in Git — they modify the **MSBuild process** to swap a legitimate `.dll` with a backdoored one **only during release builds**
 * 📦 The backdoored update ships to **~18,000 customers** including DoD, Treasury, US Postal Service, FireEye
 * 🪜 Source-code review wouldn't have caught it. SAST wouldn't have caught it. **The pipeline was the malware delivery mechanism.**
-* 💀 Estimated cost: $100B+ worldwide; multiple government agencies still doing forensic work in 2026
+* 💀 CISA issued an emergency directive ordering every federal agency to disconnect Orion; the clean-up ran for years
 * 🧠 **The lesson:** if your security model assumes the CI server is trusted, you've already lost. The pipeline must be modelled, monitored, and signed — like any other production system
 
 > 🤔 **Think:** You just learned in Lecture 3 to sign your commits. If the commit is signed but the **build** isn't, what stops a SUNBURST-style attack?
@@ -54,13 +54,13 @@ graph LR
   * Write access to package registries (`ghcr.io`, npm, PyPI)
   * Network egress to wherever they need to fetch
 
-> 💬 *"In modern systems, the build server is your most over-privileged service."* — Adam Boozer (Datadog Security), KubeCon NA 2023
+* 🧠 Count them: the build server reads every repository, holds every deployment credential, and pushes to production. Very few production services are trusted with that much, and almost none get reviewed as carefully
 
 ---
 
 ## 📍 Slide 5 – 🎯 OWASP Top 10 CI/CD Security Risks
 
-Originally released **2022**, updated 2024. Memorize the categories; you'll see them on every interview.
+Written by **Daniel Krivelevich and Omer Gil** (Cider Security) and released through OWASP in **2022**. Memorise the categories; they come up in interviews.
 
 | # | 🚨 Risk | 💡 Plain English |
 |---|---|---|
@@ -100,7 +100,7 @@ jobs:
 * 🪜 **Real exploit:** GitHub's own Github-Octo-OctoCore had a PPE bug disclosed via bug bounty 2022; resulted in a $25k payout
 * 🛡️ **Fix:** never use `pull_request_target` to run untrusted code. If you must, gate behind explicit approval (manual workflow_dispatch)
 
-> 💬 *"PPE is the SQL injection of CI/CD — same shape, same severity, and just as preventable once you know the pattern."* — Yaron Avital (Palo Alto Unit 42), 2023
+* 🧠 PPE has the shape of injection: untrusted input reaches an interpreter, and here the interpreter is your build. OWASP files it as **CICD-SEC-4**
 
 ---
 
@@ -148,7 +148,7 @@ jobs:
 - uses: actions/checkout@b4ffde6...      # ✅ SHA — immutable
 ```
 
-* 🪜 **2024 case:** the `tj-actions/changed-files` action was compromised; the maintainer's account was breached and **all version tags v1–v45 were silently re-pointed** to a malicious commit. Anyone using `@v45` or `@main` ran the malicious code; anyone pinned to a SHA was safe
+* 🪜 **March 2025 case:** `tj-actions/changed-files` was compromised and **every tag from v1 to v45.0.7 was re-pointed** at one malicious commit. Anyone referencing a tag ran it; anyone pinned to a SHA did not
 * 🛠️ Tools that help:
   * `pin-github-action` (zgosalvez) — bulk-pin and add a comment with the original tag
   * `dependabot` with `package-ecosystem: github-actions` — opens PRs to bump pinned SHAs
@@ -293,14 +293,16 @@ jobs:
 
 ---
 
-## 📍 Slide 15 – 🔬 Case Study: `tj-actions/changed-files` (2024)
+## 📍 Slide 15 – 🔬 Case Study: `tj-actions/changed-files` (March 2025)
 
-* 🗓️ **2024** — the maintainer's GitHub account was compromised; attackers re-tagged **every release from v1 to v45** to point to a malicious commit. Anyone using the action with a tag pulled the malware
-* 📊 **Scope:** an estimated **70,000+ repos** were affected; the action sees ~2M downloads/month
-* 🪜 **What protected the secure users:** SHA pinning. `@v45` pulled malicious code; `@a1b2c3d...` (the immutable hash) pulled the safe version
-* 🧠 This is the strongest case for `dependabot`-driven SHA pinning in your workflows. Tags are convenient. Convenience is what gets exploited
+* 🗓️ **14-15 March 2025** — an attacker re-points **every tag from v1 to v45.0.7** of a GitHub Action used by tens of thousands of repositories at a single malicious commit (`0e58ed8`)
+* 🐍 The payload does not deploy anything. It reads **the runner's own process memory**, finds credentials, and prints them **into the workflow log**
+* 🪤 On a public repository that log is public, so the secrets were simply readable. No exfiltration channel required
+* 📊 StepSecurity found it through an unexpected outbound call to `gist.githubusercontent.com`; **over 23,000 repositories** referenced the action. CISA issued an alert on 18 March; the fix shipped as v46.0.1
+* 🪜 **What separated the affected from the unaffected:** `@v45` resolved to the attacker's commit, `@a1b2c3d…` did not. A tag is a pointer someone else can move
+* 🧠 Note what SHA-pinning does *not* solve: it freezes you on a known-good commit, and you still need Dependabot to move you off it later. Pinning without an update path is how a repository ends up three years stale
 
-> 💬 *"If you don't pin your dependencies, your dependencies pin you."* — anonymous DevSecOps Twitter, 2024
+> 🤔 **Think:** open any workflow in your fork. How many of its `uses:` lines could someone else re-point tonight?
 
 ---
 
@@ -350,7 +352,7 @@ jobs:
   * Every deploy logs which artifact it pulled
 * 🪜 GitHub's `audit_log` API (Enterprise + Team plans) captures the workflow itself — *who triggered this rerun?* This is the data Lecture 10 will use to compute MTTR for security fixes
 
-> 💬 *"You can't have CI/CD security without CI/CD observability. The pipeline must be debuggable forensically."* — Datadog CI Visibility launch keynote, 2023
+* 🧠 Without this trail, incident response starts with "we think the pipeline ran something, but we cannot prove what"
 
 ---
 
@@ -391,8 +393,8 @@ jobs:
 
 **Talks & specs:**
 
-* 🎥 *"Securing the GitHub Actions Marketplace"* — GitHub Security, GitHub Universe 2023
-* 🎥 *"Inside the SolarWinds Build Compromise"* — CrowdStrike + FireEye joint session, RSA 2021
+* 📜 [CISA alert AA20-352A](https://www.cisa.gov/news-events/cybersecurity-advisories/aa20-352a) — the SolarWinds compromise as the responders described it
+* 📜 [CISA alert on the tj-actions compromise](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction) (March 2025)
 * 📜 [OWASP Top 10 CI/CD Risks](https://owasp.org/www-project-top-10-ci-cd-security-risks/)
 * 📜 [SLSA v1.0](https://slsa.dev/spec/v1.0/)
 * 📜 [GitHub Actions hardening guide](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions)
@@ -409,4 +411,17 @@ jobs:
 | 5 | PPE is the SQL injection of CI/CD. `pull_request_target` + checkout-untrusted-code = critical. |
 | 6 | SLSA Build Level 3 is achievable on free GitHub Actions via reusable workflows. Aim for it. |
 
-> 💬 *"In security, the most expensive bug is the one you can't see. CI/CD observability is what makes the bug see-able."* — adapted from Charity Majors, *Observability Engineering* (O'Reilly, 2022).
+> 💬 A signed commit proves who wrote the code. It says nothing about what the build did with it. That gap is this lecture.
+
+---
+
+## 📚 Sources
+
+- SolarWinds / SUNBURST: [CISA alert AA20-352A](https://www.cisa.gov/news-events/cybersecurity-advisories/aa20-352a), [Emergency Directive 21-01](https://www.cisa.gov/news-events/directives/ed-21-01-mitigate-solarwinds-orion-code-compromise)
+- OWASP Top 10 CI/CD Security Risks, Krivelevich and Gil, 2022: [project page](https://owasp.org/www-project-top-10-ci-cd-security-risks/); Poisoned Pipeline Execution as CICD-SEC-4: [category page](https://owasp.org/www-project-top-10-ci-cd-security-risks/CICD-SEC-04-Poisoned-Pipeline-Execution)
+- tj-actions/changed-files, March 2025: [CISA alert](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066-and-reviewdogaction), [GitHub advisory CVE-2025-30066](https://github.com/advisories/ghsa-mrrh-fwg8-r2c3), [Wiz analysis](https://www.wiz.io/blog/github-action-tj-actions-changed-files-supply-chain-attack-cve-2025-30066)
+- Codecov bash uploader, April 2021: [Codecov security update](https://about.codecov.io/security-update/)
+- Dependency confusion, Alex Birsan, February 2021: [the original write-up](https://medium.com/@alex.birsan/dependency-confusion-4a5d60fec610)
+- SLSA v1.0 (April 2023): [specification](https://slsa.dev/spec/v1.0/)
+- GitHub Actions: [security hardening guide](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions), [OIDC in Actions](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
+- SBOM formats: [CycloneDX](https://cyclonedx.org/specification/overview/), [SPDX, ISO/IEC 5962:2021](https://spdx.dev/use/specifications/), [CISA SBOM minimum elements](https://www.cisa.gov/sbom)

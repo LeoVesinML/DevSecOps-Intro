@@ -1,370 +1,166 @@
-# Lab 4 — SBOM Generation & Software Composition Analysis on Juice Shop
+# Lab 4 — SBOM Generation and Software Composition Analysis
 
 ![difficulty](https://img.shields.io/badge/difficulty-beginner-success)
 ![topic](https://img.shields.io/badge/topic-SBOM%20%2B%20SCA-blue)
 ![points](https://img.shields.io/badge/points-10%2B2-orange)
 ![tech](https://img.shields.io/badge/tech-Syft%20%2B%20Grype%20%2B%20Trivy-informational)
 
-> **Goal:** Generate an SBOM of the Juice Shop image with Syft, scan it with Grype, compare against Trivy's all-in-one approach, and produce a signed-ready CycloneDX SBOM for Lab 8.
-> **Deliverable:** A PR from `feature/lab4` with `submissions/lab4.md` + a `labs/lab4/juice-shop.cdx.json` SBOM committed to your fork. Submit PR link via Moodle.
-
----
-
-## Overview
-
-In this lab you will practice:
-- Generating **CycloneDX** + **SPDX** SBOMs from a container image with **Syft**
-- Scanning the same SBOM with **Grype** for CVEs (decoupled SCA)
-- Running **Trivy** as an all-in-one alternative and comparing the result
-- Producing a **CycloneDX SBOM** that Lab 8 will sign as an attestation
-
-> Recall Lecture 4 slide 11: *"the SBOM is the answer to the next Log4Shell question — do my services depend on this library?"* The artifact you produce today is the operational instrument for incident response.
-
----
-
-## Project State
-
-**You should have from Labs 1-3:**
-- Juice Shop v20.0.0 image pulled locally (Lab 1)
-- A working `feature/labN` workflow with signed commits (Labs 1, 3)
-- A pre-commit hook blocking secret leaks (Lab 3)
-
-**This lab adds:**
-- A CycloneDX SBOM of the Juice Shop image, committed to your fork (becomes Lab 8 input)
-- A reproducible Grype CVE scan
-- A side-by-side comparison report Syft+Grype vs Trivy
-
----
+> **Goal:** Build an inventory of everything inside the Juice Shop image, scan that inventory for known vulnerabilities, and compare the decoupled approach with an all-in-one scanner.
+> **Deliverable:** A PR from `feature/lab4` with `submissions/lab4.md` and `labs/lab4/juice-shop.cdx.json`. Submit the PR link via Moodle.
+> **Builds on:** the image from Lab 1. **Used by:** Lab 8 signs this SBOM as an attestation, Lab 10 imports these findings.
 
 ## Setup
 
-You need:
-- **Docker** (Juice Shop image already pulled from Lab 1; if not: `docker pull bkimminich/juice-shop:v20.0.0`)
-- **`syft`** — `brew install syft` or [GitHub releases](https://github.com/anchore/syft/releases) (course pins Syft 1.x latest stable)
-- **`grype`** — `brew install grype` or [GitHub releases](https://github.com/anchore/grype/releases) (course pins Grype 0.x latest stable)
-- **`trivy`** — `brew install trivy` (course pins **Trivy v0.74.x**, verified September 2026)
-- **`jq`** — for JSON inspection
+- Docker, with the Juice Shop image from Lab 1 (`docker pull bkimminich/juice-shop:v20.0.0`).
+- `syft` 1.x, `grype` 0.x, `trivy` 0.74.x: `brew install syft grype trivy`, or the release pages for [syft](https://github.com/anchore/syft/releases), [grype](https://github.com/anchore/grype/releases), [trivy](https://github.com/aquasecurity/trivy/releases).
+- `jq`.
 
+<!-- verify:skip student fork branch -->
 ```bash
 git switch main && git pull
 git switch -c feature/lab4
+```
 
-# Verify tools are installed
+```bash
 syft version && grype version && trivy --version && jq --version
-
-# Make a working dir for output (gitignored)
 mkdir -p labs/lab4
 ```
 
----
+## Task 1 — SBOM and CVE scan (6 pts)
 
-## Task 1 — SBOM Generation & SCA with Syft + Grype (6 pts)
-
-**Objective:** Generate two SBOM formats with Syft, run Grype against the CycloneDX SBOM, analyze the CVE findings.
-
-### 4.1: Generate SBOMs with Syft
+### 4.1 Generate two SBOMs
 
 ```bash
-# CycloneDX JSON (the format Lab 8 will sign)
-syft bkimminich/juice-shop:v20.0.0 \
-  -o cyclonedx-json=labs/lab4/juice-shop.cdx.json
+syft bkimminich/juice-shop:v20.0.0 -o cyclonedx-json=labs/lab4/juice-shop.cdx.json
+syft bkimminich/juice-shop:v20.0.0 -o spdx-json=labs/lab4/juice-shop.spdx.json
 
-# SPDX JSON (for compliance contexts — covered in Lecture 4 slide 11)
-syft bkimminich/juice-shop:v20.0.0 \
-  -o spdx-json=labs/lab4/juice-shop.spdx.json
-
-# Sanity check — both files exist and have content
-ls -la labs/lab4/juice-shop.*.json
 jq '.components | length' labs/lab4/juice-shop.cdx.json
-# Should print a number like 200-500 (depends on Juice Shop v20 image contents)
+jq '.packages   | length' labs/lab4/juice-shop.spdx.json
+jq -r '.specVersion' labs/lab4/juice-shop.cdx.json
 ```
 
-### 4.2: Run Grype against the CycloneDX SBOM
+Expect roughly 3000 CycloneDX components and about 900 SPDX packages from the same image, and `specVersion` 1.7. The two numbers differ because the formats count different things; explaining that gap is part of the task.
 
-> **Why scan the SBOM, not the image?** Decoupling the inventory (Syft) from the scanning (Grype) means: one SBOM → many scans over time. When a new CVE drops next month, re-running Grype on the same SBOM tells you instantly whether you're affected — no re-pulling the image.
+### 4.2 Scan the SBOM, not the image
 
 ```bash
-# Scan via SBOM (the modern decoupled pattern)
-grype sbom:labs/lab4/juice-shop.cdx.json \
-  -o json --file labs/lab4/grype-from-sbom.json
-grype sbom:labs/lab4/juice-shop.cdx.json \
-  -o table | tee labs/lab4/grype-from-sbom.txt
+grype sbom:labs/lab4/juice-shop.cdx.json -o json --file labs/lab4/grype-from-sbom.json
+grype sbom:labs/lab4/juice-shop.cdx.json -o table | tee labs/lab4/grype-from-sbom.txt
 
-# Severity breakdown
 jq '[.matches[].vulnerability.severity] | group_by(.) | map({severity: .[0], count: length})' \
   labs/lab4/grype-from-sbom.json
 ```
 
-### 4.3: Analyze the top findings
+Scanning the SBOM rather than the image is the point of the split: one inventory, many scans. When a vulnerability is published next month you re-run Grype against this file and know within seconds whether you shipped the affected package, without pulling anything.
+
+### 4.3 Rank the findings
+
+Severity is a string, so sorting on it directly gives you alphabetical order, where `Low` outranks `Medium`. Rank it:
 
 ```bash
-# Top 10 CVEs by severity, with fix availability
-jq '[.matches[] | {cve: .vulnerability.id, severity: .vulnerability.severity,
-                    package: .artifact.name, version: .artifact.version,
-                    fix: (.vulnerability.fix.versions // [] | join(","))}] |
-    sort_by(.severity) | .[:10]' \
+jq -r '["Critical","High","Medium","Low","Negligible","Unknown"] as $order
+  | [.matches[] | {sev: .vulnerability.severity, id: .vulnerability.id,
+                   pkg: .artifact.name, ver: .artifact.version,
+                   fix: (.vulnerability.fix.versions // [] | join(","))}]
+  | sort_by(.sev as $s | $order | index($s))
+  | .[:10][] | "\(.sev)\t\(.id)\t\(.pkg)@\(.ver)\tfix: \(.fix)"' \
   labs/lab4/grype-from-sbom.json
 ```
 
-### 4.4: Document in `submissions/lab4.md`
+**Submit** in `submissions/lab4.md`, section `## Task 1`:
 
-```markdown
-# Lab 4 — Submission
+- Component counts for both files, the `specVersion`, and two sentences on why CycloneDX and SPDX disagree about how many things are in one image.
+- The severity table with your counts and the total.
+- The top ten rows from 4.3.
+- How many of those ten have a fix available, and what you would do first given only that column and the severity column.
 
-## Task 1: Syft + Grype on Juice Shop
+## Task 2 — Compare with an all-in-one scanner (4 pts)
 
-### SBOM stats
-- `juice-shop.cdx.json` component count: <jq '.components | length' output>
-- `juice-shop.cdx.json` size: <ls output>
-- `juice-shop.spdx.json` component count: <jq '.packages | length' output>
+Optional. Skipping it does not affect later labs.
 
-### Grype severity breakdown (paste table or JSON)
-| Severity | Count |
-|----------|------:|
-| Critical | <n> |
-| High | <n> |
-| Medium | <n> |
-| Low | <n> |
-| Negligible | <n> |
-| **Total** | <n> |
-
-### Top 10 CVEs (paste from jq output)
-| CVE | Severity | Package | Installed | Fix |
-|-----|----------|---------|-----------|-----|
-| <CVE-id> | <Sev> | <pkg> | <ver> | <fix or empty> |
-| ... |
-
-### Fix-available rate
-Out of the top 10 CVEs, how many have a fix available? What does that say about your
-patch cadence priorities? (2-3 sentences. Reference Lecture 4's triage shortcut:
-*sort by fix-available AND severity ≥ HIGH first*.)
-```
-
----
-
-## Task 2 — Trivy All-in-One Comparison (4 pts)
-
-> ⏭️ Optional. Skipping won't affect future labs, but the comparison is interview-relevant: every DevSecOps engineer is asked "Syft+Grype or Trivy?" at some point.
-
-**Objective:** Run Trivy directly against the image (not via SBOM), compare CVE counts to Grype, explain the differences.
-
-### 4.5: Trivy image scan
+### 4.4 Scan the image with Trivy
 
 ```bash
-# Direct image scan — Trivy's all-in-one mode
 trivy image bkimminich/juice-shop:v20.0.0 \
   --severity LOW,MEDIUM,HIGH,CRITICAL \
   --format json --output labs/lab4/trivy.json
 
-trivy image bkimminich/juice-shop:v20.0.0 \
-  --severity HIGH,CRITICAL \
-  --format table | tee labs/lab4/trivy.txt
-```
-
-### 4.6: Comparison table
-
-```bash
-# Trivy severity breakdown
 jq '[.Results[].Vulnerabilities[]? | .Severity] | group_by(.) | map({severity: .[0], count: length})' \
   labs/lab4/trivy.json
 ```
 
-### 4.7: Document in `submissions/lab4.md`
+Trivy prints severities in upper case and Grype in title case, so a naive join of the two tables silently produces zeros.
 
-```markdown
-## Task 2: Trivy Comparison
-
-### Side-by-side counts
-| Severity | Grype | Trivy | Δ |
-|----------|------:|------:|--:|
-| Critical | <a> | <b> | <b-a> |
-| High | <a> | <b> | <b-a> |
-| Medium | <a> | <b> | <b-a> |
-| Low | <a> | <b> | <b-a> |
-| **Total** | <a> | <b> | <b-a> |
-
-### Why the difference?
-Pick **two specific CVEs** that ONE tool found and the other didn't. For each:
-1. CVE ID + tool that found it + tool that missed it
-2. Why (likely): different CVE database refresh cadence? Different package matching rules? Different fix-version awareness?
-
-(Lecture 4 mentioned that Grype and Trivy use slightly different DBs; this is where you see it.)
-
-### When would you pick each?
-2-3 sentences each:
-- When does Syft+Grype's **decoupled** model win? (hint: SBOM-as-an-attestation, Lecture 4 + Lab 8)
-- When does Trivy's **all-in-one** win? (hint: simpler CI step, broader scope including IaC + secrets + misconfig)
-```
-
----
-
-## Bonus Task — Sign-Ready SBOM for Lab 8 (2 pts)
-
-> 🌟 **Genuinely useful.** Lab 8 will sign this SBOM as a Cosign attestation. Whatever you produce here goes directly into your Lab 8 work — get the format right.
-
-**Objective:** Produce a CycloneDX SBOM that conforms to Cosign's expected predicate format and verify it's importable into DefectDojo (preview for Lab 10).
-
-### B.1: Verify CycloneDX schema compliance
+### 4.5 Find where they disagree
 
 ```bash
-# CycloneDX spec version. Syft 1.51 emits 1.7 by default; Cosign accepts it
-jq '.specVersion, .bomFormat' labs/lab4/juice-shop.cdx.json
-# Should print:
-# "1.7" (1.5 and 1.6 are also fine)
-# "CycloneDX"
-
-# CycloneDX requires a metadata.timestamp and metadata.tools section — verify
-jq '.metadata.timestamp, .metadata.tools' labs/lab4/juice-shop.cdx.json
+jq -r '[.matches[].vulnerability.id] | unique[]' labs/lab4/grype-from-sbom.json > /tmp/grype-ids.txt
+jq -r '[.Results[].Vulnerabilities[]?.VulnerabilityID] | unique[]' labs/lab4/trivy.json > /tmp/trivy-ids.txt
+comm -23 /tmp/grype-ids.txt /tmp/trivy-ids.txt | head
+comm -13 /tmp/grype-ids.txt /tmp/trivy-ids.txt | head
 ```
 
-### B.2: Re-run Syft if needed
+**Submit**, section `## Task 2`:
 
-If `specVersion` came back below 1.5 (Syft versions before 1.10 defaulted to 1.4), ask for a specific one:
+- A side-by-side severity table, Grype against Trivy, with the deltas and both totals.
+- Two identifiers found by one tool and missed by the other, one in each direction. For each, name the package and give your best explanation: different advisory source, different matching rule, or a package ecosystem one tool does not parse.
+- Three or four sentences: when is the decoupled inventory worth the extra moving part, and when is the single binary the better answer? Your answer should mention what Lab 8 does with the SBOM.
+
+## Bonus — A sign-ready attestation (2 pts)
+
+Lab 8 will attach this SBOM to the image as a signed attestation. Cosign wraps a predicate in an in-toto statement itself, but writing the envelope by hand once is how you learn what is actually being signed.
 
 ```bash
-syft bkimminich/juice-shop:v20.0.0 \
-  -o "cyclonedx-json@1.6=labs/lab4/juice-shop.cdx.json"
-```
-
-### B.3: Validate the attestation predicate shape
-
-```bash
-# YOUR TASK: Produce labs/lab4/juice-shop-attestation.json
-# Shape required by Cosign (in-toto v1 envelope, see Lecture 8 slide 9):
-#
-# {
-#   "_type": "https://in-toto.io/Statement/v1",
-#   "subject": [
-#     { "name": "<your image ref>",
-#       "digest": { "sha256": "<digest of juice-shop:v20.0.0>" } }
-#   ],
-#   "predicateType": "https://cyclonedx.org/bom/v1.5",
-#   "predicate": <the FULL contents of juice-shop.cdx.json>
-# }
+# YOUR TASK: write labs/lab4/juice-shop-attestation.json
+# Shape (in-toto Statement v1):
+#   _type          "https://in-toto.io/Statement/v1"
+#   subject[0].name   the image reference you scanned
+#   subject[0].digest {"sha256": "<the digest, without the sha256: prefix>"}
+#   predicateType  the CycloneDX BOM URL matching the specVersion you produced in 4.1
+#   predicate      the entire contents of juice-shop.cdx.json
 #
 # Hints:
-#   - Get the image digest: docker inspect bkimminich/juice-shop:v20.0.0 \
-#       --format '{{index .RepoDigests 0}}'  → returns sha256:abc...
-#   - You can build this with `jq` in a one-liner; no need for python
-#   - This file is what Lab 8 Task 2 will feed into `cosign attest --predicate ...`
+#   - the digest: docker inspect bkimminich/juice-shop:v20.0.0 --format '{{index .RepoDigests 0}}'
+#   - jq can build the whole file in one line; you do not need a script
+#   - in-toto Statement v1: https://slsa.dev/spec/v1.0/provenance
 ```
 
-### B.4: Document in `submissions/lab4.md`
+**Submit**, section `## Bonus`:
 
-```markdown
-## Bonus: Sign-Ready SBOM for Lab 8
+- The `jq` command you used and the first 20 lines of the result.
+- The digest you signed over, and one sentence on why the digest and not the tag.
+- Two or three sentences: what claim does this file make, who would check it, and what does it not prove?
 
-### CycloneDX schema version
-- `specVersion`: <output>
-- `bomFormat`: <output>
+## Submit
 
-### Image digest captured
-- `docker inspect ... RepoDigests`: <output — should be sha256:...>
-
-### Attestation predicate (paste first 30 lines of juice-shop-attestation.json)
-```
-<paste — must show _type, subject (with digest), predicateType, predicate (truncated)>
-```
-
-### What this enables in Lab 8
-1 paragraph: when Lab 8 runs `cosign attest --type cyclonedx --predicate juice-shop-attestation.json ...`,
-what specifically is being signed and what claim does it prove? (Reference Lecture 8 slide 9.)
-```
-
----
-
-## How to Submit
-
+<!-- verify:skip student fork files -->
 ```bash
-# Commit the SBOM (so Lab 8 can use it) but NOT the scan output files (too large, regenerable)
-git add labs/lab4/juice-shop.cdx.json
-git add labs/lab4/juice-shop.spdx.json
-git add labs/lab4/juice-shop-attestation.json  # Bonus only
-git add submissions/lab4.md
-git commit -m "feat(lab4): juice-shop SBOM + Grype/Trivy comparison + sign-ready attestation"
+git add labs/lab4/juice-shop.cdx.json submissions/lab4.md
+git add labs/lab4/juice-shop-attestation.json   # bonus only
+git commit -m "feat(lab4): juice shop SBOM + grype and trivy comparison"
 git push -u origin feature/lab4
 ```
 
-> **Do NOT commit** `labs/lab4/grype-from-sbom.*` and `labs/lab4/trivy.*` — they're regeneratable and large. Add them to your fork's `.gitignore` if helpful. The submission paste-in is the evidence.
+The CycloneDX file is about 2 MB and Lab 8 needs it, so it is committed on purpose. The scan outputs are not: leave `grype-from-sbom.*`, `trivy.json` and the SPDX file out of the PR and paste the numbers instead.
 
-PR checklist body:
+## Acceptance criteria
 
-```text
-- [x] Task 1 — Syft SBOMs + Grype scan + top-10 CVE analysis
-- [ ] Task 2 — Trivy comparison + when-to-pick-each tradeoff
-- [ ] Bonus — sign-ready CycloneDX attestation for Lab 8
-```
+- Task 1 (6): both SBOMs generated, counts and `specVersion` reported from the actual files; the format-difference answer names a concrete reason; severity table matches the JSON; ten findings listed with package, version and fix column; the triage answer uses both fix availability and severity.
+- Task 2 (4): Trivy scan present; side-by-side table with deltas; one divergent identifier in each direction with a plausible cause; the decoupled-versus-all-in-one answer refers to what Lab 8 does with the SBOM.
+- Bonus (2): `juice-shop-attestation.json` has the four required fields, a real digest, and a `predicateType` matching the SBOM's own `specVersion`; the answer says what the attestation does not prove.
 
----
+## Common pitfalls
 
-## Acceptance Criteria
-
-### Task 1 (6 pts)
-- ✅ `labs/lab4/juice-shop.cdx.json` and `juice-shop.spdx.json` exist in the PR
-- ✅ Grype scan completes; severity breakdown table in submission matches actual JSON
-- ✅ Top-10 CVE table populated with real CVE IDs (no placeholders); fix-availability shown
-- ✅ Fix-available analysis (2-3 sentences) references Lecture 4's triage shortcut
-
-### Task 2 (4 pts)
-- ✅ Trivy scan output present in submission
-- ✅ Side-by-side count table with deltas
-- ✅ Two specific CVEs identified as tool-divergent; explained with 1-2 sentence reasoning each
-- ✅ When-to-pick-each discussion shows understanding of decoupled vs all-in-one trade-offs
-
-### Bonus Task (2 pts)
-- ✅ `labs/lab4/juice-shop-attestation.json` exists in PR
-- ✅ File has correct `_type`, `subject.digest`, `predicateType: cyclonedx`, `predicate` shape
-- ✅ Image digest matches actual `docker inspect` output for the v20.0.0 tag
-- ✅ Lab 8 paragraph correctly identifies *what's being signed* and *what claim is being made*
-
----
-
-## Rubric
-
-| Task | Points | Criteria |
-|------|-------:|----------|
-| **Task 1** — Syft + Grype | **6** | Both SBOM formats + Grype severity table + top-10 CVE table + fix-availability triage analysis |
-| **Task 2** — Trivy comparison | **4** | Diff table + 2 tool-divergent CVEs explained + when-to-pick-each tradeoff |
-| **Bonus Task** — Sign-ready attestation | **2** | Correct in-toto v1 shape + image digest captured + Lab 8 connection articulated |
-| **Total** | **12** | 10 main + 2 bonus |
-
----
+- Grype reports GitHub advisory identifiers (`GHSA-...`) as well as `CVE-...`. Both are real; paste what the tool printed.
+- Grype's severities are `Critical`, Trivy's are `CRITICAL`. Normalise the case before comparing, or your table will be full of zeros.
+- The same advisory appears more than once when several packages in the image are affected. Use `unique` before counting distinct advisories.
+- `syft` needs to pull the image if it is not local; the first run is slow, later ones use the cache.
+- The SPDX file is larger than the CycloneDX one and Lab 8 does not use it. Do not commit it.
+- `docker inspect --format '{{index .RepoDigests 0}}'` returns the digest of the registry the image came from. If you later push the image somewhere else, that list grows and the order stops being obvious; Lab 8 deals with this.
 
 ## Resources
 
-<details>
-<summary>📚 Documentation</summary>
-
-- [Syft documentation](https://github.com/anchore/syft/wiki) — Supported formats, image targets, output options
-- [Grype documentation](https://github.com/anchore/grype/wiki) — Including the SBOM-input pattern
-- [Trivy documentation](https://trivy.dev/) — Six targets including image, fs, sbom, k8s
-- [CycloneDX spec](https://cyclonedx.org/specification/overview/) — what `specVersion` actually requires
-- [in-toto Statement v1](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md) — The envelope shape for the bonus
-
-</details>
-
-<details>
-<summary>⚠️ Common Pitfalls</summary>
-
-- 🚨 **`syft: failed to parse image source`** — usually a missing `bkimminich/` prefix or you forgot to pull the image first.
-- 🚨 **Grype prints 0 vulnerabilities** — Juice Shop v20.0.0 has CVEs; if Grype reports 0, your DB is fresh-empty. Run `grype db update` and re-scan.
-- 🚨 **Grype results differ between runs** — the CVE DB updates daily. Lock down with `--by-cve` or take a snapshot and reference the exact db checksum in your submission.
-- 🚨 **Trivy "image not found" but the image is in `docker images`** — Trivy uses a local cache too. `trivy image --download-db-only` first.
-- 🚨 **CycloneDX `specVersion` older than 1.5** — only on Syft below 1.10. Ask for a version explicitly with the `cyclonedx-json@1.6` output syntax. Current Syft emits 1.7 and Cosign attests it unchanged (verified with Cosign 3.0.2).
-- 🚨 **`docker inspect ... RepoDigests` is empty** — happens when you built the image locally instead of pulling it. Re-pull with `docker pull bkimminich/juice-shop:v20.0.0` to get the registry digest.
-- 💡 **Top-10 by severity is alphabetic ordering** — `jq 'sort_by(.severity)'` sorts strings, so "Critical" comes before "High" alphabetically (which is correct), but "Negligible" sorts before "Critical" because of the N. Use a manual ordering or `--severity-cutoff` filter.
-
-</details>
-
-<details>
-<summary>🪜 Looking ahead</summary>
-
-The SBOM you commit today travels with you for three more labs:
-- **Lab 5** — SAST/DAST against the same Juice Shop image
-- **Lab 7** — container scan + Pod Security Standards on Juice Shop deploy
-- **Lab 8** — `cosign attest --type cyclonedx --predicate juice-shop-attestation.json` (the bonus output here)
-- **Lab 10** — DefectDojo ingests the Grype + Trivy reports + this SBOM for unified triage
-
-If you skip the bonus, Lab 8 Task 2 will require you to regenerate the attestation predicate. Doing it now saves time later.
-
-</details>
+- [Syft](https://github.com/anchore/syft), [Grype](https://github.com/anchore/grype), [Trivy](https://trivy.dev/)
+- [CycloneDX specification](https://cyclonedx.org/specification/overview/) and [SPDX](https://spdx.dev/use/specifications/)
+- [CISA, Minimum Elements for an SBOM](https://www.cisa.gov/sbom) — what a regulator expects an SBOM to contain
+- [in-toto attestation spec](https://github.com/in-toto/attestation/blob/main/spec/README.md)

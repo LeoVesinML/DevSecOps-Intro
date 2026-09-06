@@ -25,11 +25,11 @@ had its sourcing pass yet. `cut` removed, kept here so it is not reintroduced.
 | Salesloft Drift OAuth token theft | 2025 | lec2 | Third-party integration is a trust boundary -> lab 2 | Google Cloud / GTIG blog, Salesloft advisory | ok | 2027 |
 | Tesla exposed Kubernetes console | 2018 | lec2 (skipped-modeling angle), lec6 | "Who can reach the admin plane" -> lab 2, lab 7 | RedLock via CyberScoop / CNBC (Feb 2018) | ok | 2027 |
 | Slack OAuth redesign "caught by STRIDE" | 2015 | lec2 | none | none found | cut | never: no primary source, likely invented |
-| Codecov bash uploader | 2021 | lec4 only (removed from lec3 on 2026-09-06) | Pin and verify build-time downloads -> lab 8 | Codecov post-mortem | verify | 2027 |
+| Codecov bash uploader | 2021 | lec4 only (removed from lec3 on 2026-09-06) | Pin and verify build-time downloads -> lab 8 | Codecov security update | ok | 2027 |
 | Toyota T-Connect access key | 2017-2022 | lec3 hook | Secret scanning before the push -> lab 3 | BleepingComputer, The Register (Oct 2022) | ok | classic, keep |
 | Uber S3 bucket keys in a repo | 2016 | lec3 | Secret scanning pre-commit -> lab 3 | DOJ release on the CSO conviction | ok | 2027 |
 | s1ngularity / Nx npm compromise | 2025 | lec3 | Credentials live on laptops; short-lived scoped tokens and a rehearsed rotation -> lab 3 bonus | Nx post-mortem, GHSA-cxm3-wv7p-598c, StepSecurity | ok | 2028 |
-| tj-actions/changed-files compromise | 2025 | lec4 (dated 2024 in the slide, check) | SHA-pin actions, least-privilege tokens -> lab 4 bonus | StepSecurity / GitHub advisory | verify | 2028 |
+| tj-actions/changed-files compromise | 2025 | lec4 (was dated 2024, fixed 2026-09-06) | SHA-pin actions, and an update path so the pin does not rot -> lab 1 bonus, lab 4 | CISA alert, CVE-2025-30066, Wiz | ok | 2028 |
 | Drupalgeddon 2 CVE-2018-7600 | 2018 | lec5 | SAST and DAST both plausible -> lab 5 | Drupal SA-CORE-2018-002 | verify | replace with a 2024+ case |
 | GitLab CVE-2023-7028 | 2024 | lec5 | Business-logic bugs evade both scanners -> lab 2 | GitLab release post | verify | 2027 |
 | Imperva breach via stolen AWS key | 2019 | lec6 | Key exposure through infra -> lab 6 | Imperva post-mortem | verify | 2027 |
