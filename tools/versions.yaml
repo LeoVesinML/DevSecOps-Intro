@@ -13,7 +13,7 @@
 # Check drift:  python3 tools/check-versions.py
 # Verify a lab: tools/verify-lab.sh 2 --run
 
-checked: 2026-09-05
+checked: 2026-09-06
 
 tools:
   juice-shop:

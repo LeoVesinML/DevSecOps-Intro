@@ -118,7 +118,7 @@ curl -s -H "Authorization: Token $DD_TOKEN" "$DD_URL/api/v2/findings/?limit=1000
 
 - The DefectDojo version, and the parser name for each file you imported, with its finding count.
 - Active findings by severity, and the total.
-- Two titles that appear more than once, and whether that is one real issue counted twice or two genuinely different findings. Say how you decided.
+- Two titles that appear more than once, and whether each is one issue counted twice or two separate findings. Say how you decided.
 - Three or four sentences: you now have one number for the whole project. Which of the nine labs contributed findings you would act on this week, and which contributed noise? Be specific about why.
 
 ## Task 2 — Make it a program (4 pts)

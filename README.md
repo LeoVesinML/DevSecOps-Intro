@@ -150,7 +150,7 @@ Each main lab (Labs 1-10) caps at **12 pts = 10 main + 2 bonus**.
 
 A student who only completes Task 1 across all 10 labs ends with a working DevSecOps pipeline — just not all the deeper-dive controls.
 
-**Bonus labs (11 + 12)** have a tighter shape: **Task 1 (4 pts) + Task 2 (4 pts) + Bonus Task (2 pts) = 10 pts total** (vs main labs' 12). The labs are bonus-track in the sense that they're not on the critical path; the Bonus Task inside each lab is still the genuinely-challenging extension. Bonus labs count toward a separate 20% weight (see grading below).
+**Bonus labs (11 + 12)** have a tighter shape: **Task 1 (4 pts) + Task 2 (4 pts) + Bonus Task (2 pts) = 10 pts total** (vs main labs' 12). The labs are bonus-track in the sense that they're not on the critical path; the Bonus Task inside each lab is still the harder extension. Bonus labs count toward a separate 20% weight (see grading below).
 
 ### Submission Workflow
 
@@ -325,7 +325,7 @@ DevSecOps-Intro/
 </details>
 
 <details>
-<summary>Talks worth your time</summary>
+<summary>Talks</summary>
 
 - *"What Happens When Falco Detects?"* — Loris Degioanni, KubeCon EU 2024
 - *"The xz Backdoor — Engineering Postmortem"* — Andres Freund, BSDCan 2024

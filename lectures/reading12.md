@@ -306,7 +306,7 @@ Most OCI images "just work" in Kata. Exceptions:
 
 Read this first. Run Lab 12. Re-read when you hit a pitfall.
 
-> 💬 *"You don't pay for the VM until something bad happens. The hard part is convincing the budget that the bad thing is probable enough."* — paraphrased from an Adobe SecOps talk at KubeCon EU 2024.
+The awkward part of this decision is that the cost is visible every day and the benefit is invisible until the day it is not. That argument is easier to make with the numbers from Lab 12 than without them.
 
 ---
 
