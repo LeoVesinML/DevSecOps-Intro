@@ -10,6 +10,10 @@
 #   <!-- verify:wait 25 -->       wait N seconds first, where the lab text tells a
 #                                 human to wait for a service to come up
 #
+# Blocks that would change the machine outside this repo (git config --global,
+# sudo, package installs, writes under $HOME) are refused automatically, marked
+# GUARD, whether or not the author remembered a skip marker.
+#
 # Portable to bash 3.2 (stock macOS): no mapfile, no associative arrays.
 set -u
 
@@ -49,9 +53,17 @@ echo "labs/lab$LAB.md: $total shell blocks"
 echo
 
 failed=0
+ran=0
 while IFS="$(printf '\t')" read -r n start marker; do
   file=$(printf "%s/block-%03d.sh" "$WORK" "$n")
   first=$(head -1 "$file")
+  # Never execute a block that reaches outside the repository. The author who
+  # forgets the skip marker is exactly the person this protects.
+  if grep -qE 'git config --(global|system)|(^|[^-])\bsudo\b|pip[x3]* install|apt(-get)? install|brew install|npm i(nstall)? -g|>> *~/|> *~/|rm -rf +[~/]' "$file"; then
+    printf "  %2s  line %-5s GUARD %s\n" "$n" "$start" "$first"
+    printf "        changes the machine outside this repo; run it by hand if you must\n"
+    continue
+  fi
   case "$marker" in
     *verify:skip*)
       printf "  %2s  line %-5s SKIP  %s\n" "$n" "$start" "$first"
@@ -70,6 +82,7 @@ while IFS="$(printf '\t')" read -r n start marker; do
     sleep "$wait_for"
   fi
   printf "  %2s  line %-5s RUN   %s\n" "$n" "$start" "$first"
+  ran=$((ran + 1))
   if ( cd "$ROOT" && bash -eo pipefail "$file" ) > "$WORK/out-$n.log" 2>&1; then
     printf "      ok\n"
   else
@@ -89,4 +102,9 @@ if [ "$failed" -gt 0 ]; then
   echo "a shipped command failed: fix the lab, not the report"
   exit 1
 fi
-echo "every runnable block exited 0"
+if [ "$ran" -eq 0 ]; then
+  echo "nothing was executed: every block is skipped or guarded."
+  echo "This lab is verified by hand, not by this tool. Say so in the PR."
+  exit 0
+fi
+echo "$ran of $total blocks executed, all exited 0"
