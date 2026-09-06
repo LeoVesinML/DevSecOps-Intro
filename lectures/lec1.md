@@ -340,7 +340,7 @@ flowchart LR
 | *The DevOps Handbook* — Kim, Humble, Debois, Willis (2nd ed., 2021) | The DevOps cultural foundation that DevSecOps extends |
 | *Web Application Security* — Andrew Hoffman (2nd ed., O'Reilly, 2024) | Companion to the attacks Juice Shop contains |
 
-**Talks (1–2 hours, worth your time):**
+**Talks:**
 
 * 🎥 *"Beyond the Security Team"* — Julien Vehent, DevSecCon Seattle 2019
 * 🎥 *"Tools & Techniques from Building a DevSecOps Culture at Mozilla"* — Julien Vehent, SBA Live Academy 2020

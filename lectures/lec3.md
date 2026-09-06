@@ -60,7 +60,7 @@ graph LR
 
 ## 📍 Slide 5 – 🪪 GPG vs SSH Commit Signing
 
-* 🪜 Git has supported **GPG signing since 2009**. SSH-key signing was added in **Git 2.34 (November 2021)** and rolled out to GitHub for verification in **August 2022**
+* 🪜 GPG commit signing arrived with `git commit -S` in **Git 1.7.9 (January 2012)**. SSH-key signing was added in **Git 2.34 (November 2021)**, and GitHub started verifying SSH signatures on **23 August 2022**
 * 🆚 Which to use?
 
 | 🏷️ Aspect | 🔐 GPG | 🪪 SSH |
@@ -69,11 +69,11 @@ graph LR
 | Key management | Web-of-trust, keyservers | Your `~/.ssh/` directory + GitHub upload |
 | Linux ecosystem | Native everywhere | Native everywhere |
 | Hardware token | YubiKey via gpg-agent | YubiKey via ssh-agent (FIDO/U2F) |
-| GitHub support | Since 2016 | Since August 2022 |
+| GitHub verification | Yes | Since 23 August 2022 |
 | Beginner friction | High (key gen + trust setup) | Low (you already have a key) |
 
 * 🪜 **In this course we use SSH signing** for Task 1: zero new infrastructure, same key you push with, GitHub verifies. GPG is fully fine; just heavier
-* 🧠 Most cloud-native teams (CNCF projects, the Go core, Kubernetes) moved to SSH signing in 2023–2024
+* 🧠 The practical argument for SSH: the key is already on the machine and already registered with GitHub, so the rollout is one config block instead of a key-management project
 
 ---
 
@@ -111,7 +111,7 @@ echo "you@example.com namespaces=\"git\" $(cat ~/.ssh/id_ed25519.pub)" \
 * 🪜 **Trade-off:** every contributor has to configure signing. The OWASP Security Champion (Lecture 1) usually owns the rollout
 * 🧠 Once enforced, the audit trail in `git log --show-signature` becomes evidence — the compliance team will ask for it during SOC 2 / ISO 27001 review (Lecture 9 covers the frameworks)
 
-> 💬 *"A 'Verified' badge on every commit is the cheapest non-repudiation control a software org can ship."* — paraphrased from the GitHub security engineering blog (2023)
+* 🧠 Signing costs one config block per developer and answers a question no code review can: *did this person actually write this?*
 
 ---
 
@@ -123,7 +123,7 @@ echo "you@example.com namespaces=\"git\" $(cat ~/.ssh/id_ed25519.pub)" \
   3. **Pasted into history** — debugging session, never cleaned up
   4. **Leaked into logs** — Cloud Function prints env vars on error
 
-* 📊 **GitGuardian's 2024 State of Secrets Sprawl** counted **23.8 million secrets** leaked across public GitHub in 2023 alone
+* 📊 **GitGuardian's State of Secrets Sprawl 2025** counted **23.8 million secrets** leaked on public GitHub during 2024, a 25% rise on the year before (the 2024 edition counted 12.8 million for 2023)
 * 🪜 **The killer property:** Git **never forgets**. Deleting a file in the next commit leaves the secret in `git log -p` forever. This is why rotation > deletion
 
 ---
@@ -187,7 +187,7 @@ gitleaks protect --staged --redact
 
 > 💬 *"The cheapest place to fail is on the developer's laptop, before the push."* — Bruce Schneier's economics applied to Git
 
-* 🪜 **The pre-commit framework** (`pre-commit.com`, Anthony Sottile, 2017) standardizes hooks: declarative `.pre-commit-config.yaml`, language-agnostic
+* 🪜 **The pre-commit framework** (`pre-commit.com`, written by Anthony Sottile at Yelp around 2014) standardises hooks: declarative `.pre-commit-config.yaml`, language-agnostic
 * 🪜 **Why it matters:** without a framework, each developer would `cp .git/hooks/...` manually — fragile, non-shareable
 
 ```yaml
@@ -217,7 +217,7 @@ You **must** rewrite history when:
 
 | 🛠️ Tool | 📅 Era | 🪜 Status |
 |---|---|---|
-| `git filter-branch` | Built-in, since 2007 | ⚠️ Deprecated since Git 2.22 (2019) — slow, race-prone |
+| `git filter-branch` | Built-in | ⚠️ Git's own manual page opens with a warning against it and points to filter-repo |
 | **`git filter-repo`** | Python, by Elijah Newren (Git maintainer), 2018 | ✅ Current recommended tool |
 | **BFG Repo Cleaner** | Java, by Roberto Tyley, 2012 | ✅ Faster for large repos, slightly less flexible |
 
@@ -275,15 +275,17 @@ git push --force --tags
 
 ---
 
-## 📍 Slide 16 – 🔬 Case Study: Codecov Bash Uploader (2021)
+## 📍 Slide 16 – 🔬 Case Study: s1ngularity, When the Repo Became the Exfil Channel (2025)
 
-* 🗓️ **April 15, 2021** — Codecov discloses that attackers altered the `bash` uploader script (downloaded by `curl | bash` in thousands of CI pipelines) to **exfiltrate environment variables**
-* 🌍 Affected: HashiCorp, Twilio, Mozilla, Rapid7, Linux Foundation, GoDaddy — anyone uploading coverage via the script
-* 🧠 **Two intertwined lessons:**
-  * **For Git/secrets (this lecture):** secrets in CI env vars are first-class secrets and need rotation too
-  * **For supply chain (Lecture 8):** signing/verification of `bash` scripts pulled into CI matters as much as signing your own artifacts
+* 🗓️ **26-27 August 2025** — attackers publish malicious versions of the **Nx** build tool to npm after stealing a maintainer's publishing token
+* 🐍 The payload runs on `npm install` and searches the developer's machine for **GitHub tokens, npm tokens, SSH keys, `.env` files and wallet keys**
+* 🪤 The clever, ugly part: instead of phoning home to a server that could be blocked, it **creates a public repository in the victim's own GitHub account** named `s1ngularity-repository` and commits the harvested secrets there, base64-encoded
+* 🌍 A second wave on 28 August used the stolen tokens to **flip private repositories to public**. Wiz counted **over 190 accounts and 3,000 repositories** affected
+* 🧠 **Why it belongs in this lecture:** every control we just built assumes secrets live in files you control. Here the secrets were **on developer laptops**, and the exfiltration channel was **Git itself**
+* 🪜 What actually limits the damage: short-lived tokens, scoped tokens, and a rotation procedure someone has rehearsed. Not a scanner
+* 🪜 How the attacker got in the first place (a workflow that ran attacker-controlled input) is **Lecture 4's** subject
 
-* 🪜 The fix that mattered: rotate every secret that ever appeared in a Codecov-using CI pipeline. The fix that *should* have been in place: signed `curl | bash` payloads (Cosign blob signing — Lab 8 Bonus)
+> 🤔 **Think:** if this ran on your laptop tonight, which credentials would it find, and how long would each of them stay valid?
 
 ---
 
@@ -320,7 +322,7 @@ git push --force --tags
   * Bonus (2 pts): Rewrite history with `git filter-repo` to purge a planted secret across all commits
 * 🚀 **Lecture 4** (next week): **CI/CD Security & Build Hardening** — we extend pre-commit hooks into pipeline gates, add SBOM generation, and start treating the pipeline itself as an attackable system
 
-> 💬 *"Trust is built in droplets and lost in bucketloads."* — Kevin Mitnick. Applies to Git history as much as to interpersonal trust.
+* 🧠 A rewritten history proves nothing to an attacker who already cloned the repository. The clock on a leaked credential starts when it is pushed, not when it is found.
 
 ---
 
@@ -336,8 +338,8 @@ git push --force --tags
 
 **Talks & specs:**
 
-* 🎥 *"How GitHub Builds GitHub"* — GitHub engineering, several talks across 2022–2024; signing rollout discussed
-* 🎥 *"Secrets Sprawl: What 23M Secrets Tell Us"* — GitGuardian, AppSec EU 2024
+* 📜 [GitGuardian, *The State of Secrets Sprawl 2025*](https://blog.gitguardian.com/the-state-of-secrets-sprawl-2025/) — where the 23.8 million number comes from, with the breakdown by secret type
+* 📜 [Nx, *s1ngularity* post-mortem](https://nx.dev/blog/s1ngularity-postmortem) — a maintainer's own account of tokens being harvested from developer machines
 * 📜 [Gitleaks Rule Reference](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml)
 * 📜 [GitHub: About commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification)
 * 📜 [git-filter-repo manual](https://htmlpreview.github.io/?https://github.com/newren/git-filter-repo/blob/docs/html/git-filter-repo.html)
@@ -352,4 +354,16 @@ git push --force --tags
 | 4 | gitleaks pre-commit + GHSS/TruffleHog in CI = layered defense. Either alone has known gaps. |
 | 5 | The Toyota leak (5 years, 296k records) needed two controls that fit on one page of YAML. Cheap insurance. |
 
-> 💬 *"The price of liberty is eternal vigilance."* — Thomas Jefferson (sort of) — applies to your `git log -p` as much as to anything else.
+> 💬 A secret in Git history is not a mistake you fix. It is an incident you close, and it closes with rotation.
+
+---
+
+## 📚 Sources
+
+- Toyota T-Connect leak: [BleepingComputer](https://www.bleepingcomputer.com/news/security/toyota-discloses-data-leak-after-access-key-exposed-on-github/), [The Register](https://www.theregister.com/2022/10/11/toyota_source_code_email_leak/) — access key public from December 2017, found September 2022, disclosed October 2022, 296,019 records
+- GPG commit signing in Git 1.7.9 (27 January 2012): [release announcement](https://lkml.iu.edu/hypermail/linux/kernel/1201.3/01990.html) — SSH signing in Git 2.34 (November 2021): [GitHub blog](https://github.blog/open-source/git/highlights-from-git-2-34/) — GitHub SSH signature verification, 23 August 2022: [changelog](https://github.blog/changelog/2022-08-23-ssh-commit-verification-now-supported/)
+- Secrets sprawl numbers: [GitGuardian, State of Secrets Sprawl 2025](https://blog.gitguardian.com/the-state-of-secrets-sprawl-2025/) (23.8M in 2024) and [2024 edition](https://blog.gitguardian.com/the-state-of-secrets-sprawl-2024-pr/) (12.8M in 2023)
+- gitleaks: [repository and rules](https://github.com/gitleaks/gitleaks); pre-commit framework: [pre-commit.com](https://pre-commit.com/), origin at Yelp described by its author on [Talk Python #282](https://talkpython.fm/episodes/show/282/pre-commit-framework)
+- History rewriting: [git filter-branch manual, WARNING section](https://git-scm.com/docs/git-filter-branch), [git filter-repo](https://github.com/newren/git-filter-repo), [BFG Repo Cleaner](https://rtyley.github.io/bfg-repo-cleaner/)
+- Uber 2016 credential theft: [DOJ, conviction of Uber's former security chief](https://www.justice.gov/usao-ndca/pr/former-chief-security-officer-uber-convicted-federal-charges-covering-data-breach)
+- s1ngularity / Nx compromise, August 2025: [Nx post-mortem](https://nx.dev/blog/s1ngularity-postmortem), [GitHub advisory GHSA-cxm3-wv7p-598c](https://github.com/advisories/GHSA-cxm3-wv7p-598c), [StepSecurity analysis](https://www.stepsecurity.io/blog/supply-chain-security-alert-popular-nx-build-system-package-compromised-with-data-stealing-malware)

@@ -1,489 +1,212 @@
-# Lab 8 — Supply Chain Security: Cosign Sign + SBOM Attestation + Blob Signing
+# Lab 8 — Supply Chain: Signing, Tampering, and Attestation
 
 ![difficulty](https://img.shields.io/badge/difficulty-intermediate-yellow)
 ![topic](https://img.shields.io/badge/topic-Supply%20Chain-blue)
 ![points](https://img.shields.io/badge/points-10%2B2-orange)
-![tech](https://img.shields.io/badge/tech-Cosign%20%2B%20Sigstore-informational)
+![tech](https://img.shields.io/badge/tech-Cosign%20%2B%20Registry-informational)
 
-> **Goal:** Sign the Juice Shop image with Cosign in a local registry, attach the CycloneDX SBOM from Lab 4 as an attestation, and (bonus) sign a tarball using `cosign sign-blob` to mitigate the Codecov 2021 attack class.
-> **Deliverable:** A PR from `feature/lab8` with `submissions/lab8.md` + saved verification outputs. Submit PR link via Moodle.
-
----
-
-## Overview
-
-In this lab you will practice:
-- **Local Distribution v3 registry** — running your own OCI registry
-- **Cosign v3.x** — keyed signing of an image digest + tamper demonstration
-- **In-toto attestation predicates** — CycloneDX SBOM + minimal provenance
-- (Bonus) **`cosign sign-blob`** — what would have stopped the Codecov 2021 attack
-
-> Recall Lecture 8 slide 1 — xz-utils 2024 narrowly missed shipping a backdoor to millions of sshd daemons. The signing + attestation pattern you build today is the discipline (not silver bullet) that supply-chain attacks bypass when absent.
-
----
-
-## Project State
-
-**You should have from Labs 1, 4, 7:**
-- Juice Shop v20.0.0 image (Lab 1)
-- `labs/lab4/juice-shop.cdx.json` — CycloneDX SBOM (Lab 4 Task 1)
-- `labs/lab4/juice-shop-attestation.json` — sign-ready predicate (Lab 4 Bonus, if completed)
-- Trivy image scan output (Lab 7 Task 1)
-
-**This lab adds:**
-- A local registry holding the image
-- A Cosign keypair + signature + saved verification output
-- SBOM attestation attached to the image (this is the Lab 4 SBOM finally in its final form)
-- (Bonus) A signed tarball + verification
-
----
+> **Goal:** Sign the Juice Shop image in a local registry, prove a swapped image fails verification, attach the Lab 4 SBOM as a signed attestation, and sign a release artifact the way the Codecov incident should have been prevented.
+> **Deliverable:** A PR from `feature/lab8` with `submissions/lab8.md` and `labs/lab8/keys/cosign.pub`. Submit the PR link via Moodle.
+> **Builds on:** the SBOM from Lab 4.
 
 ## Setup
 
-You need:
-- **Docker**
-- **Cosign v3.x** — `brew install cosign` or [GitHub releases](https://github.com/sigstore/cosign/releases) (course pins v2.4.x as of April 2026)
-- **`jq`**
+- Docker and `jq`.
+- **Cosign 3.0.x**: `brew install cosign` or the [releases page](https://github.com/sigstore/cosign/releases). Not 3.1.x, which removed `--tlog-upload=false` and breaks every command below.
 
+<!-- verify:skip student fork branch -->
 ```bash
 git switch main && git pull
 git switch -c feature/lab8
+```
 
-cosign version    # Should print 2.x.x
-docker --version
-
+```bash
+cosign version | grep GitVersion    # must be v3.0.x
 mkdir -p labs/lab8/keys labs/lab8/results
 ```
 
----
+## Task 1 — Sign an image, then try to swap it (6 pts)
 
-## Task 1 — Local Registry + Cosign Sign + Tamper Demo (6 pts)
-
-**Objective:** Run a local OCI registry, push Juice Shop into it, sign with Cosign, and demonstrate that re-tagging breaks the signature.
-
-### 8.1: Start the local registry + push Juice Shop
+### 8.1 A registry of your own
 
 ```bash
-# Distribution v3 — the modern reference registry (replaces v2)
-docker run -d --name lab8-registry \
-  -p 127.0.0.1:5000:5000 \
-  registry:3
-
-# Pull Juice Shop (if not already present)
+docker run -d --name lab8-registry -p 127.0.0.1:5000:5000 registry:3
 docker pull bkimminich/juice-shop:v20.0.0
-
-# Tag and push to local registry
 docker tag bkimminich/juice-shop:v20.0.0 localhost:5000/juice-shop:v20.0.0
 docker push localhost:5000/juice-shop:v20.0.0
 
-# Capture the registry digest — you'll sign this, not the tag
 docker inspect localhost:5000/juice-shop:v20.0.0 \
-  --format '{{index .RepoDigests 0}}' > labs/lab8/results/juice-shop-digest.txt
-cat labs/lab8/results/juice-shop-digest.txt
-# Should be: localhost:5000/juice-shop@sha256:abc... (KEEP THIS — used in every step)
+  --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+  | grep '^localhost:5000/' | tee labs/lab8/results/juice-shop-digest.txt
 ```
 
-### 8.2: Generate a Cosign keypair
+The image now has two repo digests, one for Docker Hub and one for your registry, and `{{index .RepoDigests 0}}` returns whichever it was pulled with. Sign the wrong one and Cosign goes to talk to Docker Hub, where you cannot push.
+
+### 8.2 A key, and a signature over the digest
 
 ```bash
-cd labs/lab8/keys
-cosign generate-key-pair    # Will prompt for a passphrase; use something memorable
-cd -
-
-# Verify both files exist
-ls labs/lab8/keys/
-# Should show: cosign.key (private — DO NOT COMMIT) and cosign.pub
+cd labs/lab8/keys && cosign generate-key-pair && cd -
+ls labs/lab8/keys
 ```
 
-> **The `cosign.key` is a private key. Your pre-commit hook (Lab 3 gitleaks) should refuse to commit it.** Test this — try `git add labs/lab8/keys/cosign.key` and watch gitleaks block the commit.
+`cosign.key` is a private key. Lab 3's pre-commit hook should refuse it: try `git add labs/lab8/keys/cosign.key` and watch.
 
-### 8.3: Sign the image (digest, not tag)
-
+<!-- verify:skip needs the key pair and passphrase from 8.2 -->
 ```bash
-# Read the digest captured above
 DIGEST=$(cat labs/lab8/results/juice-shop-digest.txt)
-echo "Signing: $DIGEST"
+COSIGN_PASSWORD="<your passphrase>" cosign sign \
+  --key labs/lab8/keys/cosign.key --tlog-upload=false \
+  --allow-insecure-registry --yes "$DIGEST"
 
-# Sign with your private key
-COSIGN_PASSWORD="<your-passphrase>" cosign sign \
-  --key labs/lab8/keys/cosign.key \
-  --yes \
-  "$DIGEST"
-
-# Verify
-cosign verify \
-  --key labs/lab8/keys/cosign.pub \
-  --insecure-ignore-tlog \
-  "$DIGEST" | tee labs/lab8/results/verify-original.json
-# Should print verification claims; exit 0
+cosign verify --key labs/lab8/keys/cosign.pub \
+  --insecure-ignore-tlog --allow-insecure-registry "$DIGEST" \
+  | tee labs/lab8/results/verify-original.json
 ```
 
-> **Why `--insecure-ignore-tlog`?** We're not pushing to the public Rekor transparency log for this lab (no upstream identity for the local registry). For real keyless signing in CI (Lecture 8 slide 7), Rekor handles this automatically.
+`--tlog-upload=false` and `--insecure-ignore-tlog` keep this off the public Rekor transparency log, which has no business knowing about a registry on your laptop. In CI with keyless signing, Rekor is the point and you would not pass either flag.
 
-### 8.4: Tamper demonstration
+### 8.3 Swap the image
 
+<!-- verify:skip needs the signature from 8.2 -->
 ```bash
-# Pull a different image
+# Overwrite the tag you signed. This is the attack: same name, different image.
 docker pull alpine:3.20
-# Re-tag it to LOOK like Juice Shop
-docker tag alpine:3.20 localhost:5000/juice-shop:v20.0.0-tampered
+docker tag alpine:3.20 localhost:5000/juice-shop:v20.0.0
+docker push localhost:5000/juice-shop:v20.0.0
 
-# Push under the same name
-docker push localhost:5000/juice-shop:v20.0.0-tampered
+# The tag now resolves to a different digest
+TAMPERED=$(docker inspect localhost:5000/juice-shop:v20.0.0 \
+  --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep '^localhost:5000/')
+echo "signed:  $(cat labs/lab8/results/juice-shop-digest.txt)"
+echo "now:     $TAMPERED"
 
-# Re-resolve digest — it's DIFFERENT (alpine is not juice-shop)
-docker inspect localhost:5000/juice-shop:v20.0.0-tampered \
-  --format '{{index .RepoDigests 0}}'
-# Should be a different sha256:...
+cosign verify --key labs/lab8/keys/cosign.pub --insecure-ignore-tlog \
+  --allow-insecure-registry "$TAMPERED" 2>&1 \
+  | tee labs/lab8/results/verify-tampered.txt
 
-# Verify the tampered image — should FAIL
-cosign verify \
-  --key labs/lab8/keys/cosign.pub \
-  --insecure-ignore-tlog \
-  "localhost:5000/juice-shop@$(docker inspect localhost:5000/juice-shop:v20.0.0-tampered --format '{{index .RepoDigests 0}}' | cut -d@ -f2)" \
-  > labs/lab8/results/verify-tampered.txt 2>&1 || true
-
-# The verify-tampered.txt should contain "no matching signatures" or similar
-cat labs/lab8/results/verify-tampered.txt
+# And the digest you signed still verifies, because a signature is not a tag
+cosign verify --key labs/lab8/keys/cosign.pub --insecure-ignore-tlog \
+  --allow-insecure-registry "$(cat labs/lab8/results/juice-shop-digest.txt)"
 ```
 
-### 8.5: Sanity — original still works
+**Submit** in `submissions/lab8.md`, section `## Task 1`:
 
-```bash
-# Original digest still verifies
-cosign verify \
-  --key labs/lab8/keys/cosign.pub \
-  --insecure-ignore-tlog \
-  "$DIGEST"
-# Should succeed — the signature is digest-bound, not tag-bound
-```
+- The digest you signed, and how you picked it out of the two the image carries.
+- The successful `cosign verify` output.
+- The failure on the swapped image, quoted exactly, and the proof that the original digest still verifies afterwards.
+- Three or four sentences: the tag `v20.0.0` now points at a different image than the one you signed, and Cosign noticed. Explain to someone who has not done this lab what the signature is actually bound to, and what would have happened if signatures were bound to tags instead.
 
-### 8.6: Document in `submissions/lab8.md`
+## Task 2 — Attach the SBOM as an attestation (4 pts)
 
-````markdown
-# Lab 8 — Submission
+Optional. A signature says an artifact is unchanged. An attestation says something *about* it.
 
-## Task 1: Sign + Tamper Demo
-
-### Registry + image push
-- Registry container: `lab8-registry` running on `localhost:5000`
-- Image pushed: `localhost:5000/juice-shop:v20.0.0`
-- Image digest: <paste contents of labs/lab8/results/juice-shop-digest.txt>
-
-### Signing
-- Output of `cosign sign` (just the success line is fine):
-```
-<paste>
-```
-
-### Verification (PASSED)
-Output of `cosign verify` on original digest:
-```json
-<paste labs/lab8/results/verify-original.json>
-```
-
-### Tamper Demo (FAILED — correctly)
-Output of `cosign verify` on tampered digest:
-```
-<paste labs/lab8/results/verify-tampered.txt — must contain "no matching signatures">
-```
-
-### Sanity — original still verifies
-```
-<paste the second cosign verify success>
-```
-
-### Why digest binding matters (Lecture 8 slide 6)
-2-3 sentences. The tampered re-tag pointed to a DIFFERENT digest; your signature was bound to the
-ORIGINAL digest. What would have broken if Cosign had signed the tag instead?
-````
-
----
-
-## Task 2 — SBOM + Provenance Attestations (4 pts)
-
-> ⏭️ Optional. Skipping won't affect future labs but you lose the Lab 4 → Lab 10 SBOM chain.
-
-**Objective:** Attach the Lab 4 SBOM and a minimal provenance attestation to the image. Verify both.
-
-### 8.7: Attach SBOM as a CycloneDX attestation
-
+<!-- verify:skip needs the key pair and the Lab 4 SBOM -->
 ```bash
 DIGEST=$(cat labs/lab8/results/juice-shop-digest.txt)
 
-# Use the Lab 4 SBOM as the predicate
-cosign attest \
-  --key labs/lab8/keys/cosign.key \
-  --type cyclonedx \
+COSIGN_PASSWORD="<your passphrase>" cosign attest \
+  --key labs/lab8/keys/cosign.key --type cyclonedx \
   --predicate labs/lab4/juice-shop.cdx.json \
-  --yes \
-  "$DIGEST"
+  --tlog-upload=false --allow-insecure-registry --yes "$DIGEST"
 
-# Verify the attestation + extract the embedded SBOM
-cosign verify-attestation \
-  --key labs/lab8/keys/cosign.pub \
-  --insecure-ignore-tlog \
-  --type cyclonedx \
-  "$DIGEST" | jq -r '.payload | @base64d | fromjson | .predicate' \
+cosign verify-attestation --key labs/lab8/keys/cosign.pub \
+  --insecure-ignore-tlog --allow-insecure-registry --type cyclonedx "$DIGEST" \
+  | jq -r '.payload | @base64d | fromjson | .predicate' \
   > labs/lab8/results/sbom-from-attestation.json
 
-# Compare to Lab 4 source
-diff <(jq -S '.components | length' labs/lab4/juice-shop.cdx.json) \
-     <(jq -S '.components | length' labs/lab8/results/sbom-from-attestation.json)
-# Should print nothing — same content
+jq '.components | length' labs/lab4/juice-shop.cdx.json
+jq '.components | length' labs/lab8/results/sbom-from-attestation.json
 ```
 
-### 8.8: Attach a minimal provenance attestation
+Then attach a second attestation of a different kind, so you have seen that the
+predicate is yours to choose:
 
-> **Cosign v3 note:** `cosign attest --type slsaprovenance` expects ONLY the predicate body (not the full in-toto envelope). Cosign wraps your predicate in the envelope automatically.
-
+<!-- verify:skip needs the key pair -->
 ```bash
-# Write the SLSA-provenance-v0.2 predicate body only
-cat > /tmp/predicate-only.json <<EOF
+cat > /tmp/provenance.json <<'JSON'
 {
   "builder": { "id": "https://localhost/lab8-student" },
   "buildType": "https://example.com/lab8/local-build",
-  "invocation": {
-    "configSource": {
-      "uri": "https://github.com/student/repo",
-      "digest": { "sha1": "abc123" }
-    }
-  }
+  "invocation": { "configSource": { "uri": "https://github.com/<you>/DevSecOps-Intro" } }
 }
-EOF
+JSON
 
-cosign attest \
-  --key labs/lab8/keys/cosign.key \
-  --type slsaprovenance \
-  --predicate /tmp/predicate-only.json \
-  --tlog-upload=false \
-  --allow-insecure-registry \
-  --yes \
-  "$DIGEST"
+COSIGN_PASSWORD="<your passphrase>" cosign attest \
+  --key labs/lab8/keys/cosign.key --type slsaprovenance \
+  --predicate /tmp/provenance.json \
+  --tlog-upload=false --allow-insecure-registry --yes "$DIGEST"
 
-# Verify
-cosign verify-attestation \
-  --key labs/lab8/keys/cosign.pub \
-  --insecure-ignore-tlog \
-  --type slsaprovenance \
-  "$DIGEST" > labs/lab8/results/provenance-verify.json
+cosign verify-attestation --key labs/lab8/keys/cosign.pub \
+  --insecure-ignore-tlog --allow-insecure-registry --type slsaprovenance "$DIGEST" \
+  | jq -r '.payload | @base64d | fromjson | .predicateType'
 ```
 
-### 8.9: Document in `submissions/lab8.md`
+`--type slsaprovenance` expects only the predicate body. Cosign wraps it in the
+statement itself, which is why the file above has no `_type` or `subject`.
 
-````markdown
-## Task 2: SBOM + Provenance Attestations
+**Submit**, section `## Task 2`:
 
-### SBOM attestation
-- Attached: yes (`cosign attest --type cyclonedx` exit 0)
-- Verify-attestation output (first 30 lines of decoded payload):
-```json
-<paste — must show _type, subject, predicateType, predicate with components>
-```
-- Component count matches Lab 4 source: yes / no
-- diff between Lab 4 SBOM and the extracted-from-attestation SBOM: `<output>` (empty diff = success)
+- Both component counts, which must match.
+- The `predicateType` of each of your two attestations, read out of the verified payload rather than from this page.
+- The decoded statement's `_type`, `subject` and `predicateType`, and where each came from: which values you supplied and which Cosign filled in.
+- Three or four sentences: it is the morning after the next Log4Shell. You have two thousand images in your registry. What does this attestation let you do that a signature alone does not, and what still has to be true for that to work at three in the morning?
 
-### Provenance attestation
-- Attached: yes
-- Builder ID in predicate: `<your value>`
-- buildType in predicate: `<your value>`
+## Bonus — Sign the thing people curl (2 pts)
 
-### What this gives a Lab 9 verifier (2-3 sentences)
-Lecture 8 slide 12 + Lecture 9 slide 4 — at K8s admission time, a Kyverno verify-images policy
-can require BOTH signatures AND specific attestation predicates. What's the operational difference
-between a "signed but no SBOM" image and a "signed with SBOM" image when the next Log4Shell hits?
-````
+In 2021 Codecov's bash uploader was modified on their CDN and thousands of pipelines ran it with `curl | bash`. Nothing verified it. `cosign sign-blob` is the missing step.
 
----
-
-## Bonus Task — Blob Signing (Codecov 2021 Mitigation) (2 pts)
-
-> 🌟 **Practical & directly maps to a real incident.** The Codecov bash uploader was distributed via `curl | bash` without verification. `cosign sign-blob` is the API that would have stopped it.
-
-**Objective:** Sign a tarball with `cosign sign-blob`, distribute the signature alongside it, and verify on a fresh download.
-
-### B.1: Make a "release" artifact
-
+<!-- verify:skip needs the key pair from 8.2 -->
 ```bash
-# Pretend this is your release script
-cat > /tmp/install.sh <<'EOF'
-#!/bin/bash
-echo "Welcome to my-cool-tool installer"
-echo "Running setup..."
-EOF
-chmod +x /tmp/install.sh
-
-# Tar + gzip it
+printf '#!/bin/bash\necho "installing my-tool"\n' > /tmp/install.sh
 tar -czf labs/lab8/results/my-tool.tar.gz -C /tmp install.sh
-```
 
-### B.2: Sign the blob
-
-```bash
-# Sign — produces a .sig file and a .pem certificate (for keyless) or just .sig (for keyed)
-cosign sign-blob \
-  --key labs/lab8/keys/cosign.key \
-  --yes \
+COSIGN_PASSWORD="<your passphrase>" cosign sign-blob \
+  --key labs/lab8/keys/cosign.key --yes --tlog-upload=false \
   --bundle labs/lab8/results/my-tool.tar.gz.bundle \
   labs/lab8/results/my-tool.tar.gz
 
-# Show what was produced
-ls labs/lab8/results/my-tool.tar.gz*
+cosign verify-blob --key labs/lab8/keys/cosign.pub \
+  --bundle labs/lab8/results/my-tool.tar.gz.bundle --insecure-ignore-tlog \
+  labs/lab8/results/my-tool.tar.gz
 ```
 
-### B.3: Distribute + verify (simulating a fresh download)
+Then play the attacker: change `/tmp/install.sh`, rebuild the tarball without re-signing, and verify again.
 
+**Submit**, section `## Bonus`:
+
+- `Verified OK` on the original, and the exact error on the modified tarball.
+- The two files a consumer needs, and which of them may travel over the same channel as the artifact.
+- Three or four sentences: Codecov's uploader was signed by nobody and verified by nobody. Write the install instructions you would publish so that a user who follows them cannot be given a modified script, and name the step most projects skip.
+
+## Submit
+
+<!-- verify:skip student fork files -->
 ```bash
-# Copy to a "fresh" directory as if downloaded
-mkdir -p /tmp/fresh-download
-cp labs/lab8/results/my-tool.tar.gz \
-   labs/lab8/results/my-tool.tar.gz.bundle \
-   labs/lab8/keys/cosign.pub \
-   /tmp/fresh-download/
-
-cd /tmp/fresh-download/
-
-# Verify
-cosign verify-blob \
-  --key cosign.pub \
-  --bundle my-tool.tar.gz.bundle \
-  --insecure-ignore-tlog \
-  my-tool.tar.gz
-# Should print "Verified OK" and exit 0
-cd -
-```
-
-### B.4: Tamper test for the blob
-
-```bash
-# Modify the blob (simulating an attacker re-distributing a malicious version)
-cp labs/lab8/results/my-tool.tar.gz /tmp/fresh-download/my-tool.tar.gz
-echo "MALICIOUS PAYLOAD" >> /tmp/fresh-download/my-tool.tar.gz
-
-cd /tmp/fresh-download/
-cosign verify-blob \
-  --key cosign.pub \
-  --bundle my-tool.tar.gz.bundle \
-  --insecure-ignore-tlog \
-  my-tool.tar.gz 2>&1 | tee /tmp/blob-tamper.txt || true
-# Should FAIL — signature was bound to the original byte stream
-cd -
-
-cat /tmp/blob-tamper.txt    # paste this into submission
-```
-
-### B.5: Document in `submissions/lab8.md`
-
-````markdown
-## Bonus: Blob Signing (Codecov 2021 mitigation)
-
-### Sign + verify
-- Signed: `my-tool.tar.gz` + `my-tool.tar.gz.bundle`
-- Verify-blob success output:
-```
-<paste — must include "Verified OK">
-```
-
-### Tamper test failed (correctly)
-```
-<paste /tmp/blob-tamper.txt — must show "Error: ..." or "signature was invalid">
-```
-
-### Codecov 2021 mitigation (2-3 sentences)
-Codecov's bash uploader was distributed via `curl | bash` without signature verification.
-If their CI consumers had been running `cosign verify-blob` before `bash`-ing the script,
-how would the attack have failed? Reference Lecture 8 slide 14 + the specific cosign command
-that would have caught it.
-````
-
----
-
-## How to Submit
-
-```bash
-git add labs/lab8/keys/cosign.pub          # PUBLIC key OK to commit (private key is gitignored)
-git add submissions/lab8.md
-git commit -m "feat(lab8): cosign sign + SBOM/provenance attestations + blob signing"
+git add labs/lab8/keys/cosign.pub submissions/lab8.md
+git commit -m "feat(lab8): cosign signing, tamper demo, sbom attestation"
 git push -u origin feature/lab8
-
-# Cleanup
-docker stop lab8-registry && docker rm lab8-registry
 ```
 
-> **CRITICAL: NEVER commit `labs/lab8/keys/cosign.key`** — gitleaks should already block it. Verify your `.gitignore` excludes `*.key` patterns.
+Never commit `cosign.key`. Clean up with `docker rm -f lab8-registry`.
 
-PR checklist body:
+## Acceptance criteria
 
-```text
-- [x] Task 1 — Image signed + tamper demo (both shown)
-- [ ] Task 2 — SBOM + provenance attestations attached and verified
-- [ ] Bonus — Blob signed + verify-blob success + tamper failure
-```
+- Task 1 (6): the signed digest is the local-registry one; `cosign verify` succeeds on it; the tag is overwritten and verification of the new digest fails with the error quoted; the original digest still verifies; the explanation states what the signature binds to.
+- Task 2 (4): both attestations attached and verified; the extracted SBOM has the same component count as Lab 4's; both `predicateType` values quoted from the payload; the statement fields explained by origin; the incident-response answer names a precondition, not just a benefit.
+- Bonus (2): `Verified OK` before and a signature failure after modification, both quoted; the distribution answer identifies the key-distribution problem.
 
----
+## Common pitfalls
 
-## Acceptance Criteria
-
-### Task 1 (6 pts)
-- ✅ Local registry running; Juice Shop pushed with a captured registry digest
-- ✅ `cosign verify` succeeds on original digest; output saved in submission
-- ✅ `cosign verify` fails on tampered (re-tagged) image; output saved
-- ✅ Original digest still verifies after the tamper attempt (defense-in-depth proof)
-- ✅ "Why digest binding matters" answer demonstrates understanding of tag-mutation attack
-
-### Task 2 (4 pts)
-- ✅ SBOM attestation attached; `cosign verify-attestation --type cyclonedx` succeeds
-- ✅ Decoded predicate matches Lab 4's SBOM (verified with diff)
-- ✅ Provenance attestation attached; `cosign verify-attestation --type slsaprovenance` succeeds
-- ✅ "Operational difference" answer concretely references the Log4Shell pattern
-
-### Bonus Task (2 pts)
-- ✅ `cosign verify-blob` succeeds on the original tarball
-- ✅ `cosign verify-blob` fails on the tampered tarball
-- ✅ Codecov 2021 mitigation answer correctly identifies the role of `cosign verify-blob`
-
----
-
-## Rubric
-
-| Task | Points | Criteria |
-|------|-------:|----------|
-| **Task 1** — Sign + Tamper | **6** | Registry + signed image + verify pass + tamper fail + sanity recheck + digest-binding explanation |
-| **Task 2** — Attestations | **4** | SBOM attest passes + provenance attest passes + Log4Shell operational answer |
-| **Bonus Task** — Blob signing | **2** | sign-blob pass + verify-blob pass on original + fail on tampered + Codecov mapping |
-| **Total** | **12** | 10 main + 2 bonus |
-
----
+- Cosign **3.1.x** answers `--tlog-upload=false` with a `--signing-config` error. This lab is verified on 3.0.2; check `cosign version` first.
+- `{{index .RepoDigests 0}}` gives the Docker Hub digest once the image has been pushed to a second registry. Filter for `localhost:5000/`, as 8.1 does.
+- `cosign generate-key-pair` writes into the current directory, which is why 8.2 changes directory first.
+- Forgetting `--allow-insecure-registry` against a plain-HTTP local registry gives a TLS error that reads like a network problem.
+- `cosign verify` on an unsigned digest says `no signatures found`, which is the correct answer to "was this signed", not an error in your setup.
+- The attestation payload is base64 inside JSON. `jq -r '.payload | @base64d | fromjson'` is how you read it.
 
 ## Resources
 
-<details>
-<summary>📚 Documentation</summary>
-
-- [Sigstore Cosign documentation](https://docs.sigstore.dev/cosign/system_config/specifications/) — Tool reference
-- [in-toto Statement v1 spec](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md) — Envelope shape
-- [SLSA v1.0 Provenance predicate](https://slsa.dev/spec/v1.0/provenance) — What buildDefinition/runDetails should contain
-- [CycloneDX attestation predicate type](https://cyclonedx.org/specification/overview/) — As used in `--type cyclonedx`
-- [Distribution v3 documentation](https://distribution.github.io/distribution/) — The local registry image
-
-</details>
-
-<details>
-<summary>⚠️ Common Pitfalls</summary>
-
-- 🚨 **`cosign verify` fails with "unable to fetch image"** — make sure the registry is up: `docker ps | grep lab8-registry`. Also: Cosign expects HTTPS by default — for plain HTTP registries on localhost, add `--allow-http-registry` (Cosign 2.x).
-- 🚨 **`cosign sign` succeeds but `cosign verify` fails** — typically a tag-vs-digest mismatch. Always use the `@sha256:...` digest, NOT the `:v20.0.0` tag, in both commands.
-- 🚨 **`COSIGN_PASSWORD` env var ignored** — Cosign 2.x sometimes needs `--key cosign.key` with stdin: `COSIGN_PASSWORD=<your-pw> cosign sign ...`. Or unset password (insecure) with `cosign generate-key-pair --password ''`.
-- 🚨 **Provenance attestation has empty `digest.sha256`** — the bash here extracts the digest from the file; check by `cat labs/lab8/results/juice-shop-digest.txt` first. The format is `localhost:5000/juice-shop@sha256:abc...` — extract just `abc...`.
-- 🚨 **`cosign verify-attestation` succeeds but jq decoding fails** — Cosign output is line-delimited; pipe through `head -1 | jq` to handle multiple attestations.
-- 💡 **gitleaks should block your `cosign.key` commit** (from Lab 3). If it doesn't, your pre-commit hook config is wrong. Re-run `pre-commit install` and verify by attempting `git add labs/lab8/keys/cosign.key && git commit`.
-
-</details>
-
-<details>
-<summary>🪜 Looking ahead</summary>
-
-- **Lab 9** (Falco + Conftest) — the verification step you ran here gets enforced at K8s admission time via Kyverno / Sigstore policy-controller
-- **Lab 10** (DefectDojo) — your SBOM attestation can be downloaded + imported into DefectDojo at any future date; that's how a 2026 program responds when the next Log4Shell drops in 2027
-
-</details>
+- [Cosign documentation](https://docs.sigstore.dev/cosign/signing/overview/) and [signing blobs](https://docs.sigstore.dev/cosign/signing/other_types/)
+- [in-toto attestation specification](https://github.com/in-toto/attestation/blob/main/spec/README.md)
+- [SLSA v1.0](https://slsa.dev/spec/v1.0/) — where attestations fit in a build's provenance
+- [Codecov's own account of the 2021 incident](https://about.codecov.io/security-update/)

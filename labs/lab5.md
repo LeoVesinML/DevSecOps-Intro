@@ -1,391 +1,170 @@
-# Lab 5 — SAST + DAST: Scanning Juice Shop From Both Angles
+# Lab 5 — SAST and DAST: Reading the Code, Then Watching It Run
 
 ![difficulty](https://img.shields.io/badge/difficulty-intermediate-yellow)
 ![topic](https://img.shields.io/badge/topic-SAST%20%2B%20DAST-blue)
 ![points](https://img.shields.io/badge/points-10%2B2-orange)
 ![tech](https://img.shields.io/badge/tech-Semgrep%20%2B%20ZAP-informational)
 
-> **Goal:** Run DAST (ZAP, both unauthenticated and authenticated) against the running Juice Shop, then run SAST (Semgrep) against its source code, and correlate at least one vulnerability that appears in both reports.
-> **Deliverable:** A PR from `feature/lab5` with `submissions/lab5.md` (analysis + correlation table). Submit PR link via Moodle.
-
----
-
-## Overview
-
-In this lab you will practice:
-- **DAST** with **OWASP ZAP** (Lecture 5) — baseline + full authenticated scan
-- **SAST** with **Semgrep** (Lecture 5) — `p/owasp-top-ten` ruleset against Juice Shop source
-- **Correlation** — finding a vulnerability that both tools detect; this is the highest-confidence finding type (Lecture 5 slide 15)
-
-> Recall Lecture 5 slide 11: *authenticated DAST finds 10–20× more issues than unauth*. Don't skip the auth setup.
-
----
-
-## Project State
-
-**You should have from Labs 1-4:**
-- Juice Shop v20.0.0 deployable locally (Lab 1)
-- The CycloneDX SBOM from Lab 4 (informs which deps your SAST should focus on)
-- Signed commits + pre-commit hooks working (Lab 3)
-
-**This lab adds:**
-- A baseline ZAP scan + a full authenticated ZAP scan
-- A Semgrep scan of Juice Shop source code
-- A correlation report showing 1+ vuln found by both
-
----
+> **Goal:** Scan the running Juice Shop with ZAP, unauthenticated and then logged in, scan its source with Semgrep, and find one bug both tools agree on.
+> **Deliverable:** A PR from `feature/lab5` with `submissions/lab5.md`. Submit the PR link via Moodle.
+> **Builds on:** the image from Lab 1. **Used by:** Lab 10 imports both tools' reports into DefectDojo.
 
 ## Setup
 
-You need:
-- **Docker** (Juice Shop + ZAP run as containers)
-- **Semgrep** — `pip install semgrep` (course pins **Semgrep CE 1.x latest**)
-- **`jq`** + **`git`**
-- **~3 GB free disk** for Juice Shop source code (~200 MB compressed; Semgrep needs space for its parser cache)
+- Docker, `jq`, `git`, about 1 GB of disk for the source clone.
+- Semgrep: `pip install semgrep` (or `pipx install semgrep`); the course pins 1.176.
+- ZAP runs from the `ghcr.io/zaproxy/zaproxy:stable` image, which is 2.4 GB. Pull it before the seminar, not during it.
 
+ZAP is no longer an OWASP project: it moved to the Software Security Project in 2023 and its team is at Checkmarx since 2024. Search for "ZAP", not "OWASP ZAP", or you will land on outdated pages.
+
+<!-- verify:skip student fork branch -->
 ```bash
 git switch main && git pull
 git switch -c feature/lab5
-
-# Verify
-semgrep --version
-docker --version
 ```
-
-> **Plumbing provided** (already in `labs/lab5/scripts/`):
-> - [`labs/lab5/scripts/zap-auth.yaml`](lab5/scripts/zap-auth.yaml) — ZAP Automation Framework config for authenticated scan
-> - [`labs/lab5/scripts/compare_zap.sh`](lab5/scripts/compare_zap.sh) — script to diff baseline vs authenticated ZAP results
-> - [`labs/lab5/scripts/summarize_dast.sh`](lab5/scripts/summarize_dast.sh) — produce a severity-count summary
->
-> Read these files before running — they contain inline comments explaining design choices.
-
----
-
-## Task 1 — DAST with OWASP ZAP (6 pts)
-
-**Objective:** Run ZAP in baseline mode (unauthenticated) and full mode (authenticated), then analyze the gap.
-
-### 5.1: Start Juice Shop on a dedicated network
 
 ```bash
 docker network create lab5-net 2>/dev/null || true
-
-docker run -d --name juice-shop --network lab5-net \
-  -p 127.0.0.1:3000:3000 \
+docker rm -f juice-shop 2>/dev/null || true
+docker run -d --name juice-shop --network lab5-net -p 127.0.0.1:3000:3000 \
   bkimminich/juice-shop:v20.0.0
-
-# Wait until it's ready
-until curl -s -o /dev/null http://127.0.0.1:3000/rest/products; do sleep 2; done
-echo "✅ Juice Shop ready"
-
-mkdir -p labs/lab5/results
+until curl -sf -o /dev/null http://127.0.0.1:3000/rest/admin/application-version; do sleep 2; done
+mkdir -p labs/lab5/results && chmod 777 labs/lab5/results
 ```
 
-### 5.2: Baseline (unauthenticated) ZAP scan
+`curl -sf` matters: without `-f`, curl treats an HTTP 500 as success and the loop exits before the app is up.
 
+Provided in `labs/lab5/scripts/`: [`zap-auth.yaml`](lab5/scripts/zap-auth.yaml), the ZAP Automation Framework config for the authenticated scan, and [`compare_zap.sh`](lab5/scripts/compare_zap.sh), which prints both reports side by side. Read them before running them.
+
+## Task 1 — DAST, twice (6 pts)
+
+### 5.1 Unauthenticated baseline
+
+<!-- verify:nonzero-ok zap-baseline exits non-zero when it finds anything -->
 ```bash
-docker run --rm --network lab5-net \
-  -v "$(pwd)/labs/lab5/results:/zap/wrk" \
+docker run --rm --network lab5-net -v "$(pwd)/labs/lab5/results:/zap/wrk" \
   ghcr.io/zaproxy/zaproxy:stable \
-  zap-baseline.py -t http://juice-shop:3000 \
-  -r baseline-report.html -J baseline-report.json
-# Will print scan progress; expected to finish in 1-2 minutes
-# Exits 2 if it finds issues — that's normal for Juice Shop
+  zap-baseline.py -t http://juice-shop:3000 -r baseline-report.html -J baseline-report.json
 ```
 
-### 5.3: Authenticated ZAP scan with the Automation Framework
+Two to three minutes. It ends with a `FAIL-NEW / WARN-NEW / PASS` line and exits non-zero when it finds anything, which is normal here. The baseline is passive: ZAP looks at traffic, it does not attack.
 
+### 5.2 Authenticated full scan
+
+<!-- verify:skip a 10-20 minute active scan; run it by hand -->
 ```bash
-# The provided zap-auth.yaml drives the Automation Framework
-# _JAVA_OPTIONS caps ZAP's JVM heap; without it the active scan OOM-kills the container
-docker run --rm --network lab5-net \
-  -e _JAVA_OPTIONS="-Xmx512m" \
+docker run --rm --network lab5-net -e _JAVA_OPTIONS="-Xmx512m" \
   -v "$(pwd)/labs/lab5:/zap/wrk" \
   ghcr.io/zaproxy/zaproxy:stable \
   zap.sh -cmd -autorun /zap/wrk/scripts/zap-auth.yaml -port 8090
-# This takes 5-10 minutes — it crawls + actively scans authenticated routes
 ```
 
-### 5.4: Compare the two reports
+Ten to twenty minutes: it logs in as `admin@juice-sh.op`, spiders the authenticated surface, then actively attacks it. `-Xmx512m` caps the JVM heap; without it the container is killed with no error at all.
 
+### 5.3 Compare
+
+<!-- verify:skip needs both reports from 5.1 and 5.2 -->
 ```bash
 bash labs/lab5/scripts/compare_zap.sh \
-  labs/lab5/results/baseline-report.json \
-  labs/lab5/results/auth-report.json
-# Prints a side-by-side severity count table
+  labs/lab5/results/baseline-report.json labs/lab5/results/auth-report.json
 ```
 
-### 5.5: Document in `submissions/lab5.md`
+**Submit** in `submissions/lab5.md`, section `## Task 1`:
 
-```markdown
-# Lab 5 — Submission
+- Alert counts by risk level for both runs, and how long each took.
+- **Which run reported more alerts in total, and which found the more serious ones?** Look at the highest risk level in each before you answer.
+- Two alerts that only the authenticated run found, with their URLs, and one sentence each on why an anonymous request could not reach them.
+- Three or four sentences: given your two numbers, why is "number of alerts" a bad way to compare two scans, and what would you report to a team lead instead? Then say what that implies for a pipeline whose only DAST step is `zap-baseline.py` against staging.
 
-## Task 1: DAST with OWASP ZAP
+## Task 2 — SAST on the same version (4 pts)
 
-### Baseline (unauthenticated) scan
-- Duration: <X minutes>
-- Total alerts: <n>
-| Severity | Count |
-|----------|------:|
-| High | <n> |
-| Medium | <n> |
-| Low | <n> |
-| Informational | <n> |
+Optional. Skipping it does not affect later labs, but the bonus needs it.
 
-### Authenticated full scan
-- Duration: <X minutes>
-- Total alerts: <n>
-| Severity | Count |
-|----------|------:|
-| High | <n> |
-| Medium | <n> |
-| Low | <n> |
-| Informational | <n> |
-
-### The "10–20× more" claim (Lecture 5 slide 11)
-- Ratio (auth alerts / baseline alerts): <e.g., 18.5×>
-- Did your run match the lecture's ratio? (2-3 sentences)
-- Pick **two specific alerts** that only the authenticated scan found. For each:
-  1. Alert title + severity
-  2. Why was it unreachable to the unauthenticated scan? (1 sentence)
-```
-
----
-
-## Task 2 — SAST with Semgrep (4 pts)
-
-> ⏭️ Optional. Skipping won't affect future labs, but the correlation in the bonus depends on having Semgrep output.
-
-**Objective:** Clone Juice Shop source, run Semgrep with the OWASP Top 10 ruleset, analyze the top findings.
-
-### 5.6: Clone the Juice Shop source
+### 5.4 Clone the source at the tag you are running
 
 ```bash
-# Pin to the SAME tag as the running container so source ↔ binary correspondence is honest
 git clone --depth 1 --branch v20.0.0 \
-  https://github.com/juice-shop/juice-shop.git \
-  labs/lab5/semgrep/juice-shop
-
-du -sh labs/lab5/semgrep/juice-shop
-# ~200 MB
+  https://github.com/juice-shop/juice-shop.git labs/lab5/semgrep/juice-shop
 ```
 
-### 5.7: Run Semgrep
+Pin the clone to the container's tag: scanning `main` while attacking v20.0.0 makes any correlation meaningless.
 
+### 5.5 Scan
+
+<!-- verify:skip needs the clone from 5.4 and takes several minutes -->
 ```bash
-# OWASP Top 10 community ruleset + JavaScript-specific rules
-semgrep \
-  --config=p/owasp-top-ten \
-  --config=p/javascript \
-  --config=p/secrets \
-  labs/lab5/semgrep/juice-shop \
+semgrep --config=p/owasp-top-ten --config=p/javascript --config=p/secrets \
+  --severity ERROR --severity WARNING \
   --json -o labs/lab5/results/semgrep.json \
-  --severity ERROR --severity WARNING
-
-# Human-readable summary
-semgrep \
-  --config=p/owasp-top-ten \
-  --config=p/javascript \
-  labs/lab5/semgrep/juice-shop \
-  --severity ERROR | tee labs/lab5/results/semgrep.txt
+  labs/lab5/semgrep/juice-shop
 ```
 
-### 5.8: Analyze top findings
+Three to five minutes. Parse timeouts and syntax errors on some files are expected here and do not invalidate the run.
 
+<!-- verify:skip needs the scan output from 5.5 -->
 ```bash
-# Severity breakdown
 jq '[.results[].extra.severity] | group_by(.) | map({severity: .[0], count: length})' \
   labs/lab5/results/semgrep.json
-
-# Top 10 by rule ID frequency (Lecture 5 slide 8: "sort by rule ID frequency first")
-jq '[.results[].check_id] | group_by(.) | map({rule: .[0], count: length}) |
-    sort_by(-.count) | .[:10]' \
-  labs/lab5/results/semgrep.json
+jq -r '[.results[].check_id] | group_by(.) | map({rule: .[0], n: length})
+  | sort_by(-.n) | .[:10][] | "\(.n)\t\(.rule)"' labs/lab5/results/semgrep.json
+jq '.errors | length' labs/lab5/results/semgrep.json
 ```
 
-### 5.9: Document in `submissions/lab5.md`
+**Submit**, section `## Task 2`:
 
-```markdown
-## Task 2: SAST with Semgrep
+- The severity split, the rule table, and the error count.
+- Semgrep flags files under `.github/workflows/` as well as application code. Name one such rule and connect it to Lecture 4.
+- One finding you would suppress as a false positive: quote the file, line and rule, and say what about that specific code makes the rule wrong there. A generic answer scores zero.
+- If you could fix exactly one rule's worth of findings this sprint, which and why?
 
-### Semgrep severity breakdown
-| Severity | Count |
-|----------|------:|
-| ERROR | <n> |
-| WARNING | <n> |
-| INFO | <n> |
-| **Total** | <n> |
+## Bonus — One bug, two tools (2 pts)
 
-### Top 10 rules by frequency
-| Rule ID | Count | OWASP category |
-|---------|------:|----------------|
-| <e.g., javascript.express.security.injection.tainted-sql> | <n> | A03 |
-| ... |
+The strongest finding is one both tools reach independently: a line of code and a working request against the running app.
 
-### Triage shortcut (Lecture 5 slide 8)
-Looking at the top 10 — which **one rule** would you fix first if you had time for only one?
-Why? (2-3 sentences. Likely answer: the highest-frequency rule that's not a duplicate
-of patterns the team already knows about; one fix at the module level closes many findings.)
-
-### False-positive sample
-Pick **one** finding you'd suppress as a false positive after review. Quote the file path +
-rule + 1-sentence reason. (NOT generic — must reference the specific code.)
-```
-
----
-
-## Bonus Task — SAST/DAST Correlation (2 pts)
-
-> 🌟 **Genuinely valuable.** The strongest possible finding is one both tools agree on (Lecture 5 slide 15). Producing the correlation report is what real DevSecOps engineers do for a living.
-
-**Objective:** Find at least one vulnerability that **both** Semgrep and ZAP report on the same component/endpoint. Write up the correlated finding.
-
-### B.1: Cross-reference the reports
-
+<!-- verify:skip needs both reports -->
 ```bash
-# Extract URLs/endpoints flagged by ZAP authenticated scan
-jq -r '[.site[].alerts[].instances[].uri] | unique[]' \
-  labs/lab5/results/auth-report.json | head -50 > /tmp/zap-urls.txt
-
-# Extract file paths flagged by Semgrep
-jq -r '[.results[].path] | unique[]' \
-  labs/lab5/results/semgrep.json | head -50 > /tmp/semgrep-paths.txt
-
-# YOUR TASK: find the overlap
-# Hint: ZAP's URI '/rest/products/search' likely maps to a Semgrep finding
-# in the routes/* or api/* directory of Juice Shop source
+jq -r '[.site[].alerts[] | select(.riskcode|tonumber >= 2) | .name + " -> " + .instances[0].uri] | unique[]' \
+  labs/lab5/results/auth-report.json
+jq -r '[.results[] | .check_id + " -> " + .path + ":" + (.start.line|tostring)] | unique[]' \
+  labs/lab5/results/semgrep.json | grep -v codefixes
 ```
 
-### B.2: Build the correlation table
+**Submit**, section `## Bonus`:
 
-For each correlated finding (you need ≥1, ideally 2-3):
+- A table with at least one row: OWASP category, the ZAP alert and URL, the Semgrep rule and `file:line`.
+- For your strongest row: the vulnerable source lines, the request ZAP used, and the fix you would open a PR with.
+- Two or three sentences: which finding would you put first in the PR description, and why?
 
-```markdown
-| # | OWASP cat | ZAP alert | ZAP URI | Semgrep rule | Semgrep file:line | Confidence |
-|---|-----------|-----------|---------|--------------|-------------------|------------|
-| 1 | A03 Injection | SQL Injection | /rest/products/search?q=... | tainted-sql | routes/search.ts:42 | High (both agree) |
-| 2 | ... |
-```
+## Submit
 
-### B.3: The fix — proposed remediation
-
-For your strongest correlation (the one with highest severity in both reports):
-1. **Paste the vulnerable code** from Semgrep's file:line
-2. **Paste a working payload** from ZAP's report
-3. **Write the fix** (parameterized query / output encoding / capability check / whatever applies)
-4. **Why both tools caught it** (1-2 sentences — what made this discoverable from both angles?)
-
-### B.4: Document in `submissions/lab5.md`
-
-```markdown
-## Bonus: SAST/DAST Correlation
-
-### Correlation table
-<paste the table from B.2>
-
-### Strongest correlation deep-dive
-<paste the work from B.3>
-
-### Reflection (2-3 sentences)
-Lecture 5 slide 15 calls this "the highest-confidence finding type." In a real PR review,
-which of these two would you want first — the SAST finding or the DAST evidence — and why?
-```
-
----
-
-## Cleanup (after submitting)
-
-```bash
-docker stop juice-shop
-docker network rm lab5-net
-rm -rf labs/lab5/semgrep/juice-shop      # 200MB; keep if you'll re-run; delete to save space
-```
-
----
-
-## How to Submit
-
+<!-- verify:skip student fork files -->
 ```bash
 git add submissions/lab5.md
-git commit -m "feat(lab5): ZAP baseline + auth + Semgrep + correlation"
+git commit -m "feat(lab5): zap baseline and authenticated, semgrep, correlation"
 git push -u origin feature/lab5
 ```
 
-> **Do NOT commit** `labs/lab5/results/` (scanner outputs are large and regeneratable) or `labs/lab5/semgrep/juice-shop/` (200MB clone). The submission paste-in is the evidence.
+Do not commit `labs/lab5/results/` or the source clone; paste the numbers instead. Clean up with `docker rm -f juice-shop && docker network rm lab5-net && rm -rf labs/lab5/semgrep/juice-shop`.
 
-PR checklist body:
+## Acceptance criteria
 
-```text
-- [x] Task 1 — ZAP baseline + auth + 10-20× ratio analysis
-- [ ] Task 2 — Semgrep top-10 + triage shortcut
-- [ ] Bonus — Correlation table with 1+ confirmed cross-tool finding
-```
+- Task 1 (6): both reports exist; counts by risk level for each, taken from the JSON; the totals and the highest risk level compared across the two runs; two authenticated-only alerts with URLs and a reachability reason each; the CI answer addresses coverage, not tooling.
+- Task 2 (4): severity split, rule table and error count from the actual run; a workflow-file rule connected to Lecture 4; a false positive identified by file, line and rule with code-specific reasoning; a one-rule fix argued.
+- Bonus (2): at least one row where both tools point at the same behaviour, with the source lines, the request, and a concrete fix.
 
----
+## Common pitfalls
 
-## Acceptance Criteria
-
-### Task 1 (6 pts)
-- ✅ Both ZAP runs complete (baseline + authenticated)
-- ✅ Severity tables for both runs in submission match actual JSON output
-- ✅ Auth/baseline ratio computed; lecture's 10-20× claim addressed honestly
-- ✅ Two auth-only alerts identified with WHY each was unreachable to baseline (1 sentence each, specific)
-
-### Task 2 (4 pts)
-- ✅ Semgrep run against pinned v20.0.0 source (NOT main branch — must match running container)
-- ✅ Severity breakdown + top-10-by-rule table populated
-- ✅ Triage-shortcut answer references the specific rule with reasoning
-- ✅ One concrete false-positive identified with specific file path + reason
-
-### Bonus Task (2 pts)
-- ✅ Correlation table with ≥1 row showing same vuln found by both Semgrep and ZAP
-- ✅ Strongest correlation includes vulnerable code paste + working payload + fix
-- ✅ "Why both tools caught it" reflection demonstrates understanding of static/dynamic complementarity
-
----
-
-## Rubric
-
-| Task | Points | Criteria |
-|------|-------:|----------|
-| **Task 1** — DAST | **6** | Both ZAP runs + ratio analysis + 2 auth-only-alert deep-dives |
-| **Task 2** — SAST | **4** | Semgrep run + severity table + top-10 rules + triage-shortcut + FP sample |
-| **Bonus Task** — Correlation | **2** | ≥1 confirmed correlated finding with code + payload + fix |
-| **Total** | **12** | 10 main + 2 bonus |
-
----
+- The wait loop needs `curl -sf`. Juice Shop answers 500 on some paths while starting, and plain `curl -s` accepts that as success.
+- Without `_JAVA_OPTIONS="-Xmx512m"` the active scan is OOM-killed and the container simply disappears.
+- `zap-auth.yaml` targets the hostname `juice-shop` on the Docker network. Rename the container, or drop `--network lab5-net`, and ZAP cannot reach it.
+- The config logs in as `admin@juice-sh.op` / `admin123`. Change those and the authenticated scan silently becomes a second anonymous one.
+- The ZAP image is 2.4 GB. On a seminar network, pull it in advance.
+- Most Semgrep findings sit under `data/static/codefixes/`, the deliberately vulnerable teaching snippets. Filter them out before claiming you found something in the application itself.
+- The authenticated run may report **fewer** alerts than the baseline. The passive baseline reports header and caching issues on every URL it sees, while the active run concentrates on a smaller authenticated surface. Read the risk levels, not the totals.
 
 ## Resources
 
-<details>
-<summary>📚 Documentation</summary>
-
-- [Semgrep Registry](https://semgrep.dev/explore) — Every public ruleset including `p/owasp-top-ten`
-- [Semgrep Rule Writing Guide](https://semgrep.dev/docs/writing-rules/overview/) — When you start writing custom rules
-- [OWASP ZAP Automation Framework](https://www.zaproxy.org/docs/automate/automation-framework/) — How `zap-auth.yaml` works
-- [ZAP CLI Reference](https://www.zaproxy.org/docs/docker/) — Docker invocation patterns
-- [OWASP Juice Shop Companion Guide](https://pwning.owasp-juice.shop/) — Maps each challenge to OWASP categories
-
-</details>
-
-<details>
-<summary>⚠️ Common Pitfalls</summary>
-
-- 🚨 **`zap-auth.yaml` "context not found"** — the YAML targets `juice-shop:3000` (Docker network internal name). If you renamed the container or didn't attach both to the same `lab5-net` network, ZAP can't reach it. The container name in `docker run --name` must match exactly.
-- 🚨 **Active scan dies silently (CPU 100% → container exit)** — ZAP's active scan is memory-hungry. The `_JAVA_OPTIONS="-Xmx512m"` flag in step 5.3 caps the JVM heap; omitting it lets ZAP consume all available RAM until the container is OOM-killed with no error message.
-- 🚨 **Auth scan finds 0 alerts** — the `loginRequestBody` in `zap-auth.yaml` ships with the default Juice Shop admin creds (`admin@juice-sh.op` / `admin123`). If you changed them, auth scan logs in as anonymous and only sees unauth surface.
-- 🚨 **`zap.sh -port 8090` instead of default 8080** — added in the plumbing because the previous lab version conflicted with users running things on 8080. Don't change it unless you also change the YAML.
-- 🚨 **Semgrep `Parse error: ...`** — Juice Shop's TS sources occasionally hit edge cases. Add `--exclude='**/test/**'` to skip test fixtures if a single parse error blocks the whole scan.
-- 🚨 **Semgrep takes 10 minutes** — the first run downloads the Semgrep registry. Subsequent runs use a cache; ~1-2 min is normal.
-- 🚨 **Cloning juice-shop source via `--branch v20.0.0`** sometimes fails with "remote branch not found" — the upstream uses lightweight tags. Use `git clone --depth 1` then `git checkout v20.0.0` separately if needed.
-- 💡 **Both tools must see the same code** for honest correlation — pinning the clone to `v20.0.0` matches the container exactly. Don't scan `main` of juice-shop and ZAP against a v20.0.0 container.
-
-</details>
-
-<details>
-<summary>🪜 Looking ahead</summary>
-
-- **Lab 7** (Container Security) re-uses the same Juice Shop image — Trivy will scan it as a container, complementing the SBOM-driven Grype scan from Lab 4
-- **Lab 10** (DefectDojo) imports Semgrep AND ZAP output JSON; dedupe across tools is automatic. The correlation work you did manually in the bonus is what DefectDojo does at scale.
-
-</details>
+- [ZAP Automation Framework](https://www.zaproxy.org/docs/automate/automation-framework/) and [ZAP Docker guide](https://www.zaproxy.org/docs/docker/)
+- [Semgrep registry](https://semgrep.dev/explore) and [rule syntax](https://semgrep.dev/docs/writing-rules/rule-syntax)
+- [Pwning OWASP Juice Shop](https://pwning.owasp-juice.shop/) — which challenge each finding maps to
+- [OWASP Top 10:2025](https://owasp.org/Top10/2025/) for the categories in your correlation table

@@ -14,7 +14,7 @@ Every public-facing service eventually grows three concerns the application itse
 
 The pattern is **one Nginx (or Envoy / Caddy / Traefik) in front of N application services**. The app stays focused on business logic; the edge handles security posture.
 
-> 💬 *"Defense in depth lives at the edge. The app is the inner ring; the edge is the outer ring; if either ring is wide-open, you've got a problem."* — paraphrased from Mike Bailey's *Application Layer Network Security* (No Starch, 2024)
+The edge is where you get to enforce things the application cannot: which TLS versions exist, how many requests a client may make, which headers every response carries. None of it fixes a bug in the application, and all of it changes what an attacker can reach.
 
 ---
 
@@ -261,7 +261,7 @@ bantime = 3600
 
 The default filters cover common attacks. Custom filters let you match anything in your access log — e.g., 30 404s in 60 seconds = likely scanner = ban for 1 hour.
 
-This isn't WAF-grade — fail2ban doesn't *prevent* the first attack, only the repeat ones. But it's free, lightweight, and shaves 80% of the noise from your access logs.
+This isn't WAF-grade — fail2ban doesn't *prevent* the first attack, only the repeat ones. But it is free, lightweight, and it stops repeat offenders from filling your logs.
 
 ---
 
@@ -279,7 +279,7 @@ sudo certbot --nginx \
 systemctl status certbot.timer
 ```
 
-Certbot edits your Nginx config to add the cert, and configures a renewal hook that runs every 12 hours. Real-world reliability: typically rotates 30 days before expiry; failures fire emails; works fine for ~99% of sites.
+Certbot edits your Nginx configuration and installs a timer that checks twice a day, renewing once the certificate is inside its last 30 days. What breaks in practice is the reload: a renewed certificate on disk that nginx has not re-read is still an expired certificate to a client.
 
 **For multi-domain / wildcard certs:** DNS-01 challenge (instead of HTTP-01). Requires DNS API access for your provider. Worth the setup for any site with subdomain proliferation.
 
@@ -287,7 +287,7 @@ Certbot edits your Nginx config to add the cert, and configures a renewal hook t
 
 ## When to Replace Nginx
 
-Nginx is the right answer for 95% of small-to-medium deployments. You'd replace it with:
+Nginx is a reasonable default for most small and medium deployments. You would reach for something else when:
 
 - **Envoy** — when you need fine-grained traffic shaping, observability, service mesh integration (Istio's data plane uses Envoy)
 - **Traefik** — when you want config from Kubernetes annotations / consul / etcd rather than static files
@@ -340,7 +340,7 @@ awk '$10 > 1 {print}' /var/log/nginx/access.log | head
 awk '$9 >= 400 {print $7, $9}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head
 ```
 
-Three one-liners cover 80% of "what's happening at my edge?"
+Three one-liners answer most of "what is happening at my edge?"
 
 ---
 
@@ -373,4 +373,15 @@ Three one-liners cover 80% of "what's happening at my edge?"
 
 Read this first. Then attempt Lab 11. Re-read sections when you hit a pitfall.
 
-> 💬 *"Get TLS and headers right at the edge; everything inside the perimeter inherits the gain."* — paraphrased standing advice from every AppSec consultant.
+> 💬 TLS and headers set once at the edge apply to every route behind it, including the ones nobody remembers writing. That is the only kind of security control that scales without anybody's cooperation.
+
+---
+
+## Sources
+
+- TLS configuration: [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/), [nginx ssl module reference](https://nginx.org/en/docs/http/ngx_http_ssl_module.html) including `ssl_conf_command`
+- Headers: [OWASP Secure Headers Project](https://owasp.org/www-project-secure-headers/), [MDN on Content-Security-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy), [HSTS preload list](https://hstspreload.org/)
+- Rate limiting: [nginx limit_req](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html) and [limit_conn](https://nginx.org/en/docs/http/ngx_http_limit_conn_module.html)
+- Certificates: [Let's Encrypt documentation](https://letsencrypt.org/docs/), [certbot](https://eff-certbot.readthedocs.io/)
+- WAF: [OWASP Core Rule Set](https://coreruleset.org/), [CRS container](https://github.com/coreruleset/modsecurity-crs-docker), [Coraza](https://coraza.io/)
+- Testing what a server actually offers: [testssl.sh](https://testssl.sh/)

@@ -272,14 +272,14 @@ spec:
 
 ## 📍 Slide 13 – 🔬 Case Study: Docker Hub 2019
 
-* 🗓️ **April 25, 2019** — Docker discloses unauthorized access to a database holding **190,000 accounts** with hashed passwords, GitHub/Bitbucket tokens, and Docker registry tokens
+* 🗓️ **25 April 2019** — Docker discloses unauthorized access to a database holding **190,000 accounts**, under 5% of Docker Hub users: password hashes, plus the **GitHub and Bitbucket tokens used for autobuilds**
 * 🧠 The breach wasn't a container escape — it was **Docker Hub's own infrastructure** breached via API. But the impact propagated through every customer
 * 🪜 **DevSecOps lessons:**
   * 🪪 Rotate registry tokens regularly (the long-lived-token failure mode again, from Lecture 4)
   * 🔏 Pin and sign images (Lab 8) — even if the registry is compromised, verified signatures help
   * 🛡️ Image scanning catches *only* known CVEs; registry compromises need orthogonal controls
 
-> 💬 *"Container security is application security, plus host security, plus orchestrator security, plus registry security."* — Liz Rice paraphrased; container security is **not a layer**, it's an intersection
+* 🧠 Container security is not a layer you add. It is the intersection of application security, host security, orchestrator security and registry security, and this case study is the registry corner of it
 
 ---
 
@@ -420,8 +420,8 @@ jobs:
 
 **Talks & specs:**
 
-* 🎥 *"Container Security: It's All About Trust"* — Liz Rice, KubeCon EU 2020
-* 🎥 *"Leaky Vessels: runc Container Escape"* — Snyk team, RSA 2024
+* 📜 [Snyk's Leaky Vessels research](https://snyk.io/blog/leaky-vessels-docker-runc-container-breakout-vulnerabilities/) — the disclosure write-up for CVE-2024-21626
+* 📜 [Aqua vulnerability database](https://avd.aquasec.com/) — every `DS-*` and `KSV-*` id Trivy reports
 * 📜 [NIST SP 800-190](https://csrc.nist.gov/publications/detail/sp/800-190/final) — Container Security Guide
 * 📜 [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
 * 📜 [Trivy Documentation](https://trivy.dev/)
@@ -438,4 +438,17 @@ jobs:
 | 5 | runc-style runtime CVEs happen even with perfect images. Defense in depth at runtime (L9) is mandatory. |
 | 6 | One image, multiple scans (CVE + misconfig + secret). Don't conflate them. |
 
-> 💬 *"Containers don't contain. That's the most useful sentence in container security."* — Daniel J. Walsh (Red Hat), Linux Conf 2014.
+> 💬 *"Containers do not contain."* — Dan Walsh opened his Docker security series on opensource.com with that line in September 2014. A decade of work at Red Hat and Docker has gone into making it less true, and it is still the right thing to assume.
+
+---
+
+## 📚 Sources
+
+- "Containers do not contain": [Dan Walsh's Docker security series on opensource.com, 2014](https://opensource.com/business/14/7/docker-security-selinux)
+- Docker Hub, April 2019: [Snyk analysis](https://snyk.io/blog/190000-users-affected-by-docker-hubs-security-breach-now-what/), [BleepingComputer](https://www.bleepingcomputer.com/news/security/docker-hub-database-hack-exposes-sensitive-data-of-190k-users/)
+- runc CVE-2024-21626, "Leaky Vessels", 31 January 2024: [Snyk research](https://snyk.io/blog/leaky-vessels-docker-runc-container-breakout-vulnerabilities/), [GitHub advisory](https://github.com/opencontainers/runc/security/advisories/GHSA-xr7r-f8xq-vfvv)
+- Dirty Pipe, CVE-2022-0847: [the original disclosure](https://dirtypipe.cm4all.com/)
+- Pod Security Standards and Admission: [Kubernetes docs](https://kubernetes.io/docs/concepts/security/pod-security-standards/), [migrating from PodSecurityPolicy](https://kubernetes.io/docs/tasks/configure-pod-container/migrate-from-psp/)
+- Trivy: [documentation](https://trivy.dev/), [Kubernetes scanning](https://trivy.dev/latest/docs/target/kubernetes/), [check ids](https://avd.aquasec.com/)
+- NetworkPolicy: [Kubernetes docs](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+- Liz Rice, *Container Security* (O'Reilly, 2020): [publisher page](https://www.oreilly.com/library/view/container-security/9781492056690/)

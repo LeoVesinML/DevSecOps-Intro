@@ -1,435 +1,172 @@
-# Lab 12 — BONUS — Kata Containers: Isolation, Performance, and a Real Escape PoC
+# Lab 12 — VM-Backed Container Isolation with Kata
 
 ![difficulty](https://img.shields.io/badge/difficulty-advanced-red)
 ![topic](https://img.shields.io/badge/topic-VM%20Sandboxing-blue)
-![points](https://img.shields.io/badge/points-10%2B2-orange)
-![tech](https://img.shields.io/badge/tech-Kata%20Containers-informational)
+![points](https://img.shields.io/badge/points-10-orange)
+![tech](https://img.shields.io/badge/tech-Kata%20%2B%20containerd-informational)
 
-> **Goal:** Install Kata as a containerd runtime, run the same workload on `runc` and `kata` to compare kernel isolation + performance overhead, then (bonus) demonstrate a real container-escape PoC succeeds on `runc` and fails on `kata` — the headline value-prop made concrete.
-> **Deliverable:** A PR from `feature/lab12` with `submissions/lab12.md` + benchmark outputs. Submit PR link via Moodle.
-
-> 🌟 **This is a BONUS lab** — 10 pts total (Task 1: 4 + Task 2: 4 + Bonus: 2).
-> Bonus labs count toward a separate **20% weight** in your final grade (see README).
-> Difficulty is **advanced** — kernel/runtime layer; requires Linux host with KVM access.
-
----
-
-## Overview
-
-In this lab you will practice:
-- **Kata Containers v3.x** — VM-backed container runtime under containerd (Reading 12)
-- **Side-by-side runtime comparison** — runc vs kata, observable differences in kernel + devices + perf
-- **Performance benchmark** — startup time + CPU-bound + I/O-bound, with real numbers
-- (Bonus) **Container-escape PoC demonstration** — a real escape that succeeds on runc, fails on Kata
-
-> **Read Reading 12 first.** It covers the whole landscape (Kata, gVisor, Firecracker, Confidential Containers) — this lab focuses on Kata, but the reading sets context.
-
----
-
-## Project State
-
-**You should have from Labs 1, 7:**
-- Familiarity with containers + Pod Security Standards (Lab 7)
-- A Linux host with kernel ≥ 5.8 + KVM access (`/dev/kvm` exists + readable)
-
-**This lab adds:**
-- Kata Containers installed + registered as a containerd runtime
-- Side-by-side run-comparison data (runc vs kata)
-- Performance + isolation analysis with real numbers
-- (Bonus) Hands-on demonstration of an escape blocked by VM isolation
-
-> ⚠️ **macOS / Windows users:** Kata requires KVM, which doesn't work in Docker Desktop's Linux VM by default. Either spin up a Linux VM with nested virtualization, use a KVM-enabled cloud VM, or use a bare-metal Linux machine. See Reading 12 for context.
-
----
+> **Goal:** Run the same container on `runc` and on Kata, measure what the extra kernel costs you and what it buys you, then show an escape that works on one and not the other.
+> **Deliverable:** A PR from `feature/lab12` with `submissions/lab12.md`. Submit the PR link via Moodle.
+> **Bonus lab:** 4 + 4 + 2 points. Reading 12 covers the theory.
 
 ## Setup
 
-You need:
-- **Linux host with KVM** — `lsmod | grep kvm` shows kvm_intel or kvm_amd
-- **`/dev/kvm` readable** — add yourself to `kvm` group if needed
-- **containerd + nerdctl** installed (most Linux distros via packages)
-- **`sudo`** — install Kata into `/opt`, modify `/etc/containerd/config.toml`
+This lab changes the machine it runs on. Read this section before you start.
 
+- A **Linux host with `/dev/kvm`**, containerd and `nerdctl`. `ls -l /dev/kvm` must succeed. WSL2 has it; Docker Desktop's VM does not expose it, and neither do most cloud instances unless you asked for nested virtualisation.
+- `sudo`. The installer writes to `/opt/kata` and edits `/etc/containerd/config.toml`.
+- Do this on a machine you are willing to reconfigure, or a throwaway VM. Not your only laptop the night before a deadline.
+
+<!-- verify:skip student fork branch -->
 ```bash
 git switch main && git pull
 git switch -c feature/lab12
-
-lsmod | grep -E "kvm_intel|kvm_amd" && ls -la /dev/kvm
-sudo systemctl status containerd
-nerdctl --version
-
 mkdir -p labs/lab12/results
 ```
 
-> **Plumbing provided** (in `labs/lab12/`):
-> - [`labs/lab12/scripts/install-kata-assets.sh`](lab12/scripts/install-kata-assets.sh) — downloads kata-static + configures
-> - [`labs/lab12/scripts/configure-containerd-kata.sh`](lab12/scripts/configure-containerd-kata.sh) — updates containerd config to register `kata` runtime
-> - [`labs/lab12/setup/build-kata-runtime.sh`](lab12/setup/build-kata-runtime.sh) — optional from-source build
+```bash
+ls -l /dev/kvm && command -v containerd nerdctl
+```
 
----
+Provided in `labs/lab12/`: `scripts/install-kata-assets.sh` (downloads and unpacks the pinned Kata static build), `scripts/configure-containerd-kata.sh` (registers the runtime with containerd) and `setup/build-kata-runtime.sh` (an optional from-source build). Read all three before running any of them with `sudo`.
 
-## Task 1 — Install + Hello-World on Both Runtimes (4 pts)
+## Task 1 — Two runtimes, one image (4 pts)
 
-**Objective:** Install Kata, register it with containerd, run the same image under both runtimes, confirm the kernel inside the container differs.
+### 12.1 Install Kata
 
-### 12.1: Install Kata
-
+<!-- verify:skip installs to /opt and edits containerd's config on the host -->
 ```bash
 sudo bash labs/lab12/scripts/install-kata-assets.sh
 sudo bash labs/lab12/scripts/configure-containerd-kata.sh
-sudo systemctl restart containerd
-
-# Verify the registration
-grep -A 2 'runtimes.kata' /etc/containerd/config.toml
-# Should show:
-# [plugins.'io.containerd.grpc.v1.cri'.containerd.runtimes.kata]
-#   runtime_type = 'io.containerd.kata.v2'
-
 cat /opt/kata/VERSION
-# Should print 3.x.x
+grep -A2 'runtimes.kata' /etc/containerd/config.toml
 ```
 
-### 12.2: Hello-world on both runtimes
+The installer pins Kata 4.1.0. Pass a version as an argument to override it, and record which you used: benchmark numbers from different runtimes are not comparable.
 
+### 12.2 The same command, twice
+
+<!-- verify:skip requires the kata runtime from 12.1 -->
 ```bash
-# runc (default)
-sudo nerdctl run --rm alpine:3.20 sh -c "uname -a; head -3 /proc/cpuinfo" \
-  > labs/lab12/results/runc-kernel.txt 2>&1
-cat labs/lab12/results/runc-kernel.txt
+sudo nerdctl run --rm alpine:3.20 uname -r \
+  | tee labs/lab12/results/runc-kernel.txt
+sudo nerdctl run --rm --runtime=io.containerd.kata.v2 alpine:3.20 uname -r \
+  | tee labs/lab12/results/kata-kernel.txt
 
-# kata
+sudo nerdctl run --rm alpine:3.20 ls /dev | wc -l
+sudo nerdctl run --rm --runtime=io.containerd.kata.v2 alpine:3.20 ls /dev | wc -l
+
+sudo nerdctl run --rm alpine:3.20 sh -c 'grep ^CapEff /proc/1/status'
 sudo nerdctl run --rm --runtime=io.containerd.kata.v2 alpine:3.20 \
-  sh -c "uname -a; head -3 /proc/cpuinfo" \
-  > labs/lab12/results/kata-kernel.txt 2>&1
-cat labs/lab12/results/kata-kernel.txt
+  sh -c 'grep ^CapEff /proc/1/status'
 ```
 
-### 12.3: Document in `submissions/lab12.md`
+**Submit** in `submissions/lab12.md`, section `## Task 1`:
 
-````markdown
-# Lab 12 — BONUS — Submission
+- Both kernel versions, and the host's. One of them will not match the host.
+- The device counts and the capability masks, side by side.
+- Three or four sentences: a container on `runc` reports the host's kernel release. Explain what that single line of output tells an attacker who has just landed in your container, and what changes when the answer is a different kernel.
 
-## Task 1: Install + Hello-World
+## Task 2 — What the isolation costs (4 pts)
 
-### Host environment
-- Kernel (host): <uname -a>
-- KVM accessible: <ls -la /dev/kvm>
-- containerd version: <containerd --version>
+### 12.3 Measure, do not guess
 
-### Kata installation
-- Kata version: <cat /opt/kata/VERSION>
-- containerd config snippet:
-```toml
-<paste the runtimes.kata block>
-```
-
-### Kernel inside containers
-**runc:**
-```
-<paste runc-kernel.txt — should show host kernel>
-```
-
-**kata:**
-```
-<paste kata-kernel.txt — should show DIFFERENT kernel (Kata's mini-VM kernel)>
-```
-
-### Why the kernel differs (Reading 12)
-Reading 12 explains the model. Reference Lecture 7 slide 14 — runc CVE-2024-21626 ("Leaky Vessels").
-What does the kernel difference imply for that attack class? (2-3 sentences.)
-````
-
----
-
-## Task 2 — Isolation + Performance Benchmark (4 pts)
-
-> ⏭️ Optional. Skipping won't break Task 1 or the bonus.
-
-**Objective:** Quantify two trade-offs — Kata's isolation gain, Kata's performance cost — with real numbers.
-
-### 12.4: Isolation test
-
+<!-- verify:skip requires the kata runtime from 12.1 -->
 ```bash
-# /dev contents
-sudo nerdctl run --rm alpine:3.20 ls /dev > labs/lab12/results/runc-devs.txt
-sudo nerdctl run --rm --runtime=io.containerd.kata.v2 alpine:3.20 ls /dev \
-  > labs/lab12/results/kata-devs.txt
-diff labs/lab12/results/runc-devs.txt labs/lab12/results/kata-devs.txt \
-  > labs/lab12/results/dev-diff.txt || true
-
-# Capability set (sometimes the more visible isolation)
-sudo nerdctl run --rm alpine:3.20 sh -c "grep ^Cap /proc/1/status" \
-  > labs/lab12/results/runc-caps.txt
-sudo nerdctl run --rm --runtime=io.containerd.kata.v2 alpine:3.20 \
-  sh -c "grep ^Cap /proc/1/status" \
-  > labs/lab12/results/kata-caps.txt
-```
-
-### 12.5: Performance benchmark
-
-```bash
-# Cold start (avg of 5 runs)
-for runtime in runc kata; do
-  RUNTIME_FLAG=""
-  [ "$runtime" = "kata" ] && RUNTIME_FLAG="--runtime=io.containerd.kata.v2"
-  echo "=== $runtime ==="
+for rt in runc kata; do
+  [ "$rt" = kata ] && FLAG="--runtime=io.containerd.kata.v2" || FLAG=""
+  echo "== $rt startup =="
+  # One warm-up that is thrown away, then five timed runs
+  sudo nerdctl run --rm $FLAG alpine:3.20 true >/dev/null 2>&1
   for i in 1 2 3 4 5; do
-    START=$(date +%s.%N)
-    sudo nerdctl run --rm $RUNTIME_FLAG alpine:3.20 echo "hello" > /dev/null
-    END=$(date +%s.%N)
-    echo "$i: $(echo "$END - $START" | bc) s"
+    /usr/bin/time -f '%e' sudo nerdctl run --rm $FLAG alpine:3.20 true 2>&1 | tail -1
   done
-done | tee labs/lab12/results/startup-bench.txt
+done | tee labs/lab12/results/startup.txt
 
-# I/O-bound: 100MB dd through /dev/null
-for runtime in runc kata; do
-  RUNTIME_FLAG=""
-  [ "$runtime" = "kata" ] && RUNTIME_FLAG="--runtime=io.containerd.kata.v2"
-  echo "=== $runtime I/O ==="
-  sudo nerdctl run --rm $RUNTIME_FLAG alpine:3.20 \
-    sh -c 'dd if=/dev/zero of=/dev/null bs=1M count=100 2>&1' | grep "copied"
-done | tee labs/lab12/results/io-bench.txt
+for rt in runc kata; do
+  [ "$rt" = kata ] && FLAG="--runtime=io.containerd.kata.v2" || FLAG=""
+  echo "== $rt io =="
+  # Write to the container's filesystem, not /dev/null: the point is to cross
+  # the storage layer, which is where a VM-backed runtime differs from runc
+  sudo nerdctl run --rm $FLAG alpine:3.20 \
+    sh -c 'dd if=/dev/zero of=/tmp/bench bs=1M count=512 conv=fsync 2>&1 | tail -1'
+done | tee labs/lab12/results/io.txt
 ```
 
-### 12.6: Document in `submissions/lab12.md`
+**Submit**, section `## Task 2`:
 
-````markdown
-## Task 2: Isolation + Performance
+- Five startup times per runtime after the warm-up, with the median for each. Report the median, not the mean: one slow run skews an average.
+- The I/O throughput figures, and one sentence on why the benchmark writes to a file rather than to `/dev/null`.
+- Memory overhead per container, and how you measured it.
+- A table of three workloads from your own experience or the reading, each with a verdict: `runc`, Kata, or "needs more information", and one sentence of justification each.
+- Three or four sentences: your startup numbers differ by roughly an order of magnitude. For which class of workload does that number not matter at all, and why?
 
-### Isolation: /dev diff
-```
-<paste dev-diff.txt — list specific differences>
-```
+## Bonus — An escape that Kata stops (2 pts)
 
-### Isolation: capability sets
-runc:
-```
-<paste runc-caps.txt>
-```
-kata:
-```
-<paste kata-caps.txt>
-```
+Reading 12 argues that a second kernel contains what namespaces do not. Show it.
 
-### Startup time (5-run avg)
-| Runtime | Avg startup (s) |
-|---------|----------------:|
-| runc | <e.g. 0.45> |
-| kata | <e.g. 2.10> |
+### 12.4 Pick a vector
 
-**Overhead: ~<X>× cold start (expected ~5× per Reading 12 table)**
+The simplest convincing one is a privileged container with a host bind mount. It is not a CVE: it is the misconfiguration that appears in real clusters, and the contrast with Kata is visible in one command.
 
-### I/O throughput (100MB dd)
-| Runtime | Throughput |
-|---------|-----------|
-| runc | <e.g. 12.5 GB/s> |
-| kata | <e.g. 1.2 GB/s> |
+Verified on `runc` while writing this lab: an unprivileged Alpine container sees 15 entries in `/dev` and a capability mask of `00000000a80425fb`; with `--privileged` it sees 181 entries and `000001ffffffffff`, and writing through a `-v /tmp:/host_tmp` mount changes the file on the host.
 
-### Trade-off analysis (3-4 sentences, Reading 12 framing)
-When is the security gain (separate kernel, runc-CVE class blocked) worth the cost?
-When isn't it? Give one example each (e.g., "multi-tenant SaaS workloads = yes;
-single-tenant batch jobs = no").
-````
-
----
-
-## Bonus Task — Real Container-Escape PoC: runc vs Kata (2 pts)
-
-> 🌟 **The headline value proposition.** Reading 12 + Lecture 7 made the case that VM-backed isolation defeats container-escape CVEs. This bonus DEMONSTRATES it: take a real, public, well-understood escape PoC; show it works on runc; show it doesn't work on Kata. **Reproducible evidence of the trade-off you analyzed in Task 2.**
-
-**Objective:** Pick **one** escape vector. Demonstrate it succeeds on runc + fails on Kata. Document why.
-
-### B.1: Pick your escape vector
-
-Three good options (varying difficulty):
-
-| Vector | Difficulty | Description |
-|--------|------------|-------------|
-| **A. CVE-2019-5736 runc PoC** | ★★★ | The classic; PoC by `Frichetten/CVE-2019-5736-PoC` on GitHub. Overwrites the host's `runc` binary from inside a container. Patched in runc ≥ 1.0.0-rc6. To demonstrate, you need a deliberately old runc on a sandboxed VM. |
-| **B. Privileged-container host write** | ★ | Run `nerdctl run --privileged -v /:/host alpine ...`. From inside, `echo "hacked" >> /host/etc/HOSTED` writes to the host filesystem. Trivial to demonstrate; the "escape" is the privileged flag itself. **Easier and convincing for this bonus.** |
-| **C. cgroup v1 release_agent escape (CVE-2022-0492)** | ★★ | Mount cgroupfs inside container, write a `release_agent` script that runs on the host. Patched on cgroup v2; old kernels still vulnerable. Best on a cgroup v1 sandbox VM. |
-
-> **Recommended for this lab: vector B** (privileged-container host write). It's the simplest to demonstrate, the underlying threat model is the most common (misconfigured `--privileged` in real workloads), and the contrast with Kata is the most visible. Vectors A and C are more "real CVE" but harder to set up reproducibly.
-
-### B.2: Demonstrate on runc
-
+<!-- verify:skip writes to the host filesystem on purpose -->
 ```bash
-# Sandbox host file we'll try to overwrite
-sudo touch /tmp/lab12-target
-sudo chown root:root /tmp/lab12-target
-echo "original" | sudo tee /tmp/lab12-target
-
-# runc with --privileged + host bind mount: the escape
+echo original | sudo tee /tmp/lab12-target
 sudo nerdctl run --rm --privileged -v /tmp:/host_tmp alpine:3.20 \
-  sh -c 'echo "OVERWRITTEN BY RUNC CONTAINER" > /host_tmp/lab12-target && cat /host_tmp/lab12-target'
-
-# Verify on host
-sudo cat /tmp/lab12-target
-# Should print: OVERWRITTEN BY RUNC CONTAINER
+  sh -c 'echo "OVERWRITTEN" > /host_tmp/lab12-target'
+cat /tmp/lab12-target
 ```
 
-### B.3: Demonstrate Kata blocks it
+### 12.5 Now on Kata
 
 ```bash
-# Reset target
-echo "original" | sudo tee /tmp/lab12-target
-
-# Same flags, kata runtime
-sudo nerdctl run --rm --runtime=io.containerd.kata.v2 --privileged -v /tmp:/host_tmp alpine:3.20 \
-  sh -c 'echo "ATTEMPTED OVERWRITE FROM KATA" > /host_tmp/lab12-target 2>&1 && cat /host_tmp/lab12-target; echo "---host view---"' 2>&1 \
-  | tee labs/lab12/results/kata-escape-attempt.txt
-
-# Verify on host — Kata's bind mount is INSIDE the micro-VM; host file is untouched
-sudo cat /tmp/lab12-target
-# Should still print: original
+# YOUR TASK: run the same escape against the kata runtime and record what happens
+# Requirements:
+#   - the identical command, with --runtime=io.containerd.kata.v2 added
+#   - capture the outcome, whatever it is, including if it partly works
+# Hints:
+#   - think about what a bind mount means when the container has its own kernel
+#   - --privileged inside a VM grants privileges over which kernel?
 ```
 
-### B.4: Document in `submissions/lab12.md`
+**Submit**, section `## Bonus`:
 
-````markdown
-## Bonus: Container-Escape PoC
+- Both runs and the state of the host file after each.
+- The device count and capability mask for a privileged container under each runtime.
+- Three or four sentences: explain the result in terms of what `--privileged` actually grants and to what. If the escape partly worked on Kata, say so and explain which part.
+- One sentence on the honest limit: name something Kata does not protect you from.
 
-### Vector chosen
-- **Option:** <A / B / C>
-- **Why:** <1-2 sentences>
+## Submit
 
-### runc: escape succeeds
-Command:
-```bash
-<paste your runc command>
-```
-
-Container output:
-```
-<paste — should show the write succeeded>
-```
-
-Host verification:
-```
-<sudo cat /tmp/lab12-target — should show OVERWRITTEN BY RUNC CONTAINER>
-```
-
-### Kata: escape blocked
-Command:
-```bash
-<paste your kata command>
-```
-
-Container output:
-```
-<paste kata-escape-attempt.txt — should show the write went to the MICRO-VM filesystem, not the host>
-```
-
-Host verification:
-```
-<sudo cat /tmp/lab12-target — should still show "original">
-```
-
-### Threat model implication (3-4 sentences, Reading 12 framing)
-- Why does Kata block what runc allows? (Reference: Kata's micro-VM filesystem IS NOT the host filesystem — bind mounts are virtualized via virtio-fs/9p inside the VM.)
-- What real-world threat does this map to? (Multi-tenant CI runners running `--privileged` containers; misconfigured Kubernetes pods.)
-- What does this NOT block? (Pure side-channel attacks on the kernel itself, cross-tenant timing attacks. Reading 12's "Confidential Containers" section is where THOSE get defenses.)
-````
-
----
-
-## Cleanup
-
-```bash
-sudo nerdctl ps -a --filter ancestor=alpine:3.20 -q | xargs -r sudo nerdctl rm -f
-sudo rm -f /tmp/lab12-target
-```
-
----
-
-## How to Submit
-
+<!-- verify:skip student fork files -->
 ```bash
 git add submissions/lab12.md
-git commit -m "feat(lab12): kata vs runc isolation + perf + escape PoC"
+git commit -m "feat(lab12): kata vs runc isolation, cost and escape"
 git push -u origin feature/lab12
 ```
 
-PR checklist body:
+Undo the host changes when you are done: remove the `kata` runtime block from `/etc/containerd/config.toml`, restart containerd, and delete `/opt/kata`.
 
-```text
-- [x] Task 1 — Kata installed; both runtimes run; kernel diff documented
-- [ ] Task 2 — Isolation + 5-run startup + I/O benchmark with trade-off analysis
-- [ ] Bonus — Escape PoC succeeds on runc, fails on Kata (with host-side verification)
-```
+## Acceptance criteria
 
----
+- Task 1 (4): both kernel versions with the host's for comparison; device counts and capability masks side by side; the what-an-attacker-learns answer is about the specific output, not general theory.
+- Task 2 (4): five timings per runtime with medians; I/O figures; a memory measurement with its method; three workloads judged with reasons; the order-of-magnitude answer names a workload class where it does not matter.
+- Bonus (2): both runs recorded with the host file's state; masks and device counts for both; an explanation in terms of what `--privileged` grants; one honest limitation of Kata.
 
-## Acceptance Criteria
+## Common pitfalls
 
-### Task 1 (4 pts)
-- ✅ Kata installed; `cat /opt/kata/VERSION` returns 3.x
-- ✅ containerd config includes the `runtimes.kata` block
-- ✅ Both runtimes run hello-world successfully
-- ✅ Kernel inside containers documented for BOTH runtimes; diff visible
-- ✅ "Why the kernel differs" answer correctly maps to Reading 12 + runc CVE class
-
-### Task 2 (4 pts)
-- ✅ /dev diff documented (isolation evidence)
-- ✅ Capability set diff documented
-- ✅ Startup time measured for both (5 runs averaged)
-- ✅ I/O benchmark captured for both
-- ✅ Trade-off analysis has both "would deploy" and "wouldn't deploy" scenarios
-
-### Bonus Task (2 pts)
-- ✅ Escape vector picked + justified (1-2 sentences)
-- ✅ runc demonstration: container modifies host filesystem (verified from outside the container)
-- ✅ Kata demonstration: same command, host file UNCHANGED (verified from outside)
-- ✅ Threat-model implication answer references the micro-VM filesystem model + a real-world multi-tenant case
-- ✅ Honest note about what Kata DOES NOT block (kernel side-channels, cross-tenant timing)
-
----
-
-## Rubric
-
-| Task | Points | Criteria |
-|------|-------:|----------|
-| **Task 1** — Install + hello-world | **4** | Kata working + both runtimes + kernel-diff with Reading-12 explanation |
-| **Task 2** — Isolation + perf | **4** | /dev + caps diff + 5-run startup + I/O bench + production-trade-off analysis |
-| **Bonus Task** — Escape PoC | **2** | runc succeeds + kata fails + host-side verification + threat-model + honest limits |
-| **Total** | **10** | Task 1 + Task 2 + Bonus |
-
----
+- No `/dev/kvm`, no Kata. Check first: the failure otherwise arrives several minutes into an install.
+- Kata is a containerd runtime, so `docker run --runtime=` will not reach it. Use `nerdctl`, or `ctr`, or Kubernetes with a RuntimeClass.
+- `configure-containerd-kata.sh` edits `/etc/containerd/config.toml`. Keep a copy: an invalid config leaves containerd refusing to start, which takes every container on the host with it.
+- The first Kata start is slow because the guest kernel and image are cold, which is why the loop above throws one run away before timing five.
+- Timing with `time` includes `nerdctl` and containerd overhead, identically for both runtimes, which is why the comparison is still fair. Say so in your report rather than pretending you measured the runtime alone.
+- The installer used to resolve "latest", so two students could benchmark different Kata versions and compare numbers that were never comparable. It is pinned now; if you override it, say which version you used.
 
 ## Resources
 
-<details>
-<summary>📚 Documentation</summary>
-
-- [Reading 12](../lectures/reading12.md) — the deep-dive companion (Kata + gVisor + Firecracker + CoCo)
-- [Kata Containers documentation](https://katacontainers.io/docs/) — install + ops
-- [Kata Containers architecture](https://github.com/kata-containers/kata-containers/blob/main/docs/design/architecture/README.md) — how the VM-per-container model works
-- [CVE-2019-5736 (runc escape) writeup](https://blog.dragonsector.pl/2019/02/cve-2019-5736-escape-from-docker-and.html) — for vector A
-- [CVE-2022-0492 (cgroup v1 release_agent)](https://www.crowdstrike.com/blog/cgroup-v1-release-agent-vulnerability/) — for vector C
-- [Linux KVM documentation](https://www.kernel.org/doc/html/latest/virt/kvm/index.html) — the hypervisor Kata uses
-
-</details>
-
-<details>
-<summary>⚠️ Common Pitfalls</summary>
-
-- 🚨 **`ls /dev/kvm: No such file or directory`** — you're not on a KVM-capable host. Bare-metal Linux works; Docker Desktop's Linux VM doesn't by default; cloud VMs vary (most enable KVM; older `t2.micro`-style EC2s do not).
-- 🚨 **`Permission denied on /dev/kvm`** — `sudo usermod -aG kvm $USER && newgrp kvm`, OR run nerdctl with `sudo`.
-- 🚨 **Kata container starts but takes 60-90s** — Kata's nested networking + microVM boot add latency. Don't conclude "Kata is broken"; wait.
-- 🚨 **`nerdctl run --runtime=...` fails with "no such runtime"** — `sudo systemctl restart containerd` after editing the config.
-- 🚨 **dd reports MB/s on runc but B/s on kata** — different output formats due to dd timing. Use `| grep "copied"` to extract the rate line consistently.
-- 🚨 **Benchmark numbers vary wildly between runs** — KVM startup is unstable for the first few. Discard the first 1-2 runs.
-- 🚨 **Bonus (vector B): `--privileged + -v /:/host` on Kata writes "succeed"** but on the **micro-VM**, NOT the host. The verify-from-outside step is what makes the bonus convincing. Always cat the file from a separate shell on the HOST.
-- 💡 **If the lab is impossible on your laptop**: spin up a cloud VM ($1-2 for a few hours). c6i.xlarge on AWS, n2-standard-4 on GCP — both support KVM.
-
-</details>
-
-<details>
-<summary>🪜 Looking outside this course</summary>
-
-- **gVisor** (Reading 12) — alternative user-space syscall interception; lower cold-start, weaker syscall compatibility
-- **Firecracker** — AWS's minimal VMM; ~125ms boot; powers Lambda + Fargate
-- **Confidential Containers (CoCo)** — protects container memory from the HOST (Intel TDX / AMD SEV-SNP); 2026 frontier
-- **In your portfolio:** "I evaluated Kata Containers vs runc for sandboxed workloads, measured 5× cold-start overhead vs near-zero CPU overhead, and demonstrated a real container-escape blocked by VM isolation" is a strong DevSecOps interview line.
-
-</details>
+- [Kata Containers documentation](https://katacontainers.io/docs/) and the [installation guides](https://github.com/kata-containers/kata-containers/tree/main/docs/install)
+- [containerd runtime configuration](https://github.com/containerd/containerd/blob/main/docs/cri/config.md)
+- [Kubernetes RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) — how this is selected in a cluster rather than per command
+- [gVisor](https://gvisor.dev/docs/) — the other approach to the same problem, worth contrasting in Task 2

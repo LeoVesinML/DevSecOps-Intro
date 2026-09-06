@@ -1,438 +1,227 @@
-# Lab 7 — Container Security: Trivy + Pod Security Standards + Policy Gate
+# Lab 7 — Container and Kubernetes Hardening
 
 ![difficulty](https://img.shields.io/badge/difficulty-intermediate-yellow)
-![topic](https://img.shields.io/badge/topic-Container%20Security-blue)
+![topic](https://img.shields.io/badge/topic-Container%20%2B%20K8s-blue)
 ![points](https://img.shields.io/badge/points-10%2B2-orange)
-![tech](https://img.shields.io/badge/tech-Trivy%20%2B%20PSS%20%2B%20Conftest-informational)
+![tech](https://img.shields.io/badge/tech-Trivy%20%2B%20k3d-informational)
 
-> **Goal:** Scan Juice Shop image with Trivy (CVE + misconfig + secrets), harden a Kubernetes deployment of it with Pod Security Standards + NetworkPolicy + securityContext, and write a Conftest policy that gates non-compliant pods.
-> **Deliverable:** A PR from `feature/lab7` with `submissions/lab7.md` + hardened K8s manifests + (bonus) a Conftest policy. Submit PR link via Moodle.
-
----
-
-## Overview
-
-In this lab you will practice:
-- **Trivy v0.69.x** in three modes: `image`, `config`, `k8s` (Lecture 7 slide 8)
-- Hardening a K8s Deployment with **Pod Security Standards** (`restricted` profile) + **`securityContext`** + **NetworkPolicy** (Lectures 7 slides 11-15)
-- (Bonus) Writing a **Conftest/Rego** policy to gate non-compliant pods at CI time
-
-> Recall Lecture 7 slide 4 — "containers don't contain". The hardening here is the difference between a contained workload and a kernel-CVE-away-from-pwned one.
-
----
-
-## Project State
-
-**You should have from Labs 1-6:**
-- Juice Shop v20.0.0 image pulled (Lab 1)
-- Sign-ready CycloneDX SBOM at `labs/lab4/juice-shop.cdx.json` (Lab 4 bonus)
-- Familiarity with Checkov-style scanner output (Lab 6)
-- Signed commits + pre-commit gitleaks (Lab 3)
-
-**This lab adds:**
-- A Trivy image scan + manifest scan of Juice Shop
-- A hardened Kubernetes deployment of Juice Shop (PSS restricted + NetworkPolicy)
-- (Bonus) A Conftest policy that fails CI on non-compliant pods
-
----
+> **Goal:** Scan the image and its Dockerfile, then run Juice Shop in Kubernetes under the `restricted` Pod Security Standard and prove the difference a scanner can see.
+> **Deliverable:** A PR from `feature/lab7` with `submissions/lab7.md` and your manifests under `labs/lab7/k8s/`. Submit the PR link via Moodle.
+> **Builds on:** the image digest from Lab 4. **Used by:** Lab 9 runs runtime detection against a cluster like this one.
 
 ## Setup
 
-You need:
-- **Docker**
-- **Trivy v0.69.x** — `brew install trivy` or [GitHub releases](https://github.com/aquasecurity/trivy/releases)
-- **`kubectl`** + **`kind`** or **`k3d`** — for a local Kubernetes cluster
-- **`conftest`** v0.68.x — `brew install conftest` (only needed for bonus)
-- **`jq`**
+- Docker, `jq`, Trivy 0.74.x, `kubectl` 1.31+, and `k3d` 5.8+.
+- `conftest` 0.69.x for the bonus.
 
+<!-- verify:skip student fork branch -->
 ```bash
 git switch main && git pull
 git switch -c feature/lab7
+```
 
-# Verify
+```bash
 trivy --version && kubectl version --client && docker --version
+mkdir -p labs/lab7/results labs/lab7/k8s labs/lab7/policies
+```
 
-# Start a local K8s cluster
-kind create cluster --name lab7 --image kindest/node:v1.33.0
-# OR: k3d cluster create lab7 --image rancher/k3s:v1.33.0-k3s1
-
+<!-- verify:skip creates a cluster; run it once by hand -->
+```bash
+k3d cluster create lab7 --image rancher/k3s:v1.33.0-k3s1
 kubectl cluster-info
-
-mkdir -p labs/lab7/{results,k8s,policies}
 ```
 
----
+## Task 1 — Scan the artifact (6 pts)
 
-## Task 1 — Trivy Image + Misconfig Scan (6 pts)
-
-**Objective:** Run Trivy in two modes against Juice Shop and analyze the findings.
-
-### 7.1: Image vulnerability scan
+### 7.1 Image vulnerabilities
 
 ```bash
-trivy image bkimminich/juice-shop:v20.0.0 \
-  --severity HIGH,CRITICAL \
+trivy image bkimminich/juice-shop:v20.0.0 --severity HIGH,CRITICAL \
   --format json --output labs/lab7/results/trivy-image.json
-
-trivy image bkimminich/juice-shop:v20.0.0 \
-  --severity HIGH,CRITICAL \
-  --format table | tee labs/lab7/results/trivy-image.txt
 ```
 
-### 7.2: Dockerfile misconfig scan
+### 7.2 Rank what you can actually fix
 
 ```bash
-# We don't have Juice Shop's Dockerfile, but we WILL write our own K8s manifest
-# in Task 2. For now, scan a sample Dockerfile to learn the workflow.
-cat > /tmp/Dockerfile-bad <<'EOF'
-FROM node:latest                      # CKV_DOCKER_3: avoid :latest
-USER root                             # CKV_DOCKER_8: USER non-root
-EXPOSE 22                             # CKV_DOCKER_1: don't expose SSH
-ADD https://example.com/app.tar /     # CKV_DOCKER_4: ADD URL is risky
-EOF
-
-trivy config /tmp/Dockerfile-bad --severity HIGH,CRITICAL --format table
-```
-
-### 7.3: Triage by fix availability
-
-```bash
-# Top 10 CVEs with fixes (Lecture 7 slide 9 — "fix available AND severity ≥ HIGH first")
-jq '[.Results[].Vulnerabilities[]? | select(.FixedVersion != null) |
-    {cve: .VulnerabilityID, severity: .Severity, pkg: .PkgName, installed: .InstalledVersion, fix: .FixedVersion}] |
-    sort_by(.severity) | .[:10]' \
+jq -r '["CRITICAL","HIGH"] as $order
+  | [.Results[].Vulnerabilities[]? | select(.FixedVersion != null)
+     | {sev: .Severity, id: .VulnerabilityID, pkg: .PkgName,
+        now: .InstalledVersion, fix: .FixedVersion}]
+  | sort_by(.sev as $s | $order | index($s))
+  | .[:10][] | "\(.sev)\t\(.id)\t\(.pkg) \(.now) -> \(.fix)"' \
   labs/lab7/results/trivy-image.json
 ```
 
-### 7.4: Document in `submissions/lab7.md`
+`select(.FixedVersion != null)` is the whole trick: a vulnerability with no released fix is a decision about compensating controls, not a ticket for this sprint.
 
-```markdown
-# Lab 7 — Submission
-
-## Task 1: Trivy Image + Config Scan
-
-### Image scan severity breakdown
-| Severity | Total | With fix available |
-|----------|------:|------------------:|
-| Critical | <n> | <m> |
-| High | <n> | <m> |
-| **Total** | <n> | <m> |
-
-### Top 10 CVEs with fixes
-| CVE | Severity | Package | Installed | Fix |
-|-----|----------|---------|-----------|-----|
-| ... |
-
-### Compared to Lab 4's Grype scan
-Look back at your Lab 4 Grype results on the same image. Pick **two CVEs**:
-1. One that BOTH Grype and Trivy found
-2. One that ONE tool found and the OTHER missed
-For each: explain why the tools differ (DB freshness? Different package matching?
-EPSS scoring? Lecture 7 + Lecture 4 give context.) (2-3 sentences per CVE.)
-```
-
----
-
-## Task 2 — Kubernetes Hardening (4 pts)
-
-> ⏭️ Optional. Skipping won't affect future labs, but you miss the most concrete shift-right experience of the course.
-
-**Objective:** Deploy Juice Shop to your local K8s cluster with full PSS `restricted` profile compliance, including securityContext, NetworkPolicy, and a non-default ServiceAccount.
-
-### 7.5: Write the hardened manifests
-
-Create the following files. **The lab does NOT ship them as plumbing** — writing them is the skill.
-
-#### `labs/lab7/k8s/namespace.yaml`
-
-```yaml
-# YOUR TASK: namespace with PSS labels
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: juice-shop
-  labels:
-    # PSS enforce: restricted (Lecture 7 slide 11)
-    # Pick all three: enforce, warn, audit — all set to restricted
-    # pod-security.kubernetes.io/enforce: <?>
-    # pod-security.kubernetes.io/warn: <?>
-    # pod-security.kubernetes.io/audit: <?>
-```
-
-#### `labs/lab7/k8s/serviceaccount.yaml`
-
-A dedicated SA with `automountServiceAccountToken: false` (Lecture 7 slide 12 anti-pattern).
-
-#### `labs/lab7/k8s/deployment.yaml`
-
-```yaml
-# YOUR TASK: Juice Shop Deployment with FULL hardening
-# Requirements (all required for PSS restricted compliance):
-#   - serviceAccountName: <your dedicated SA>
-#   - automountServiceAccountToken: false
-#   - pod-level securityContext:
-#       runAsNonRoot: true
-#       runAsUser: 1000      # Juice Shop runs as UID 1000 by default
-#       fsGroup: 1000
-#       seccompProfile: { type: RuntimeDefault }
-#   - container-level securityContext:
-#       allowPrivilegeEscalation: false
-#       readOnlyRootFilesystem: true       # See pitfalls — Juice Shop writes /tmp
-#       capabilities: { drop: ["ALL"] }
-#   - resources.limits.{memory,cpu} + resources.requests.{memory,cpu}
-#   - image pinned by digest: bkimminich/juice-shop@sha256:<from your Lab 4 capture>
-#
-# Hint: readOnlyRootFilesystem=true breaks Juice Shop. Mount emptyDir
-#       at /tmp, /usr/src/app/logs, and any other path Juice Shop writes to.
-```
-
-#### `labs/lab7/k8s/networkpolicy.yaml`
-
-```yaml
-# YOUR TASK: default-deny + allow-ingress-from-localhost
-# Requirements (Lecture 7 slide 15):
-#   - podSelector matching app=juice-shop
-#   - policyTypes: [Ingress, Egress]
-#   - ingress: explicitly allow from-namespace-ingress-controller-or-localhost-port-forward
-#   - egress: explicitly allow DNS (UDP 53 to kube-system) and HTTPS (TCP 443) — nothing else
-```
-
-### 7.6: Apply + verify
+### 7.3 Scan a Dockerfile
 
 ```bash
-kubectl apply -f labs/lab7/k8s/
-
-# Wait for the pod
-kubectl -n juice-shop wait --for=condition=ready pod -l app=juice-shop --timeout=120s
-
-# Capture full pod spec for proof
-kubectl -n juice-shop get pod -l app=juice-shop -o yaml > labs/lab7/results/pod-spec.yaml
-
-# Quick PSS compliance check
-kubectl -n juice-shop describe pod -l app=juice-shop | grep -A 3 -i "security context"
-```
-
-### 7.7: Trivy K8s scan
-
-```bash
-trivy k8s --include-namespaces juice-shop \
-  --severity HIGH,CRITICAL \
-  --format json --output labs/lab7/results/trivy-k8s.json
-
-trivy k8s --include-namespaces juice-shop \
-  --severity HIGH,CRITICAL \
-  --report=summary
-```
-
-### 7.8: Document in `submissions/lab7.md`
-
-````markdown
-## Task 2: Kubernetes Hardening
-
-### Manifests (paste relevant snippets)
-- `namespace.yaml` PSS labels:
-```yaml
-<paste the three labels>
-```
-- `deployment.yaml` securityContext sections (pod + container):
-```yaml
-<paste>
-```
-- `networkpolicy.yaml` ingress + egress:
-```yaml
-<paste>
-```
-
-### Pod is running
-Output of `kubectl get pod -n juice-shop -l app=juice-shop`:
-```
-<paste — must show Running, Ready 1/1>
-```
-
-### Trivy K8s scan
-| Severity | Count |
-|----------|------:|
-| Critical | <n> |
-| High | <n> |
-
-### What broke and how you fixed it (2-3 sentences)
-`readOnlyRootFilesystem: true` likely broke Juice Shop. What paths did it need to write?
-How did you fix it (which emptyDir mounts)?
-````
-
----
-
-## Bonus Task — Conftest Policy Gate (2 pts)
-
-> 🌟 **Genuinely valuable.** Conftest in CI catches insecure pods *before* `kubectl apply`. Lecture 9 covers Conftest in depth; this bonus is your preview.
-
-**Objective:** Write a Rego policy that refuses pods missing key hardening (runAsNonRoot, readOnlyRootFilesystem, no wildcard caps).
-
-### B.1: Write the policy
-
-```rego
-# labs/lab7/policies/pod-hardening.rego
-# YOUR TASK: Rego policy refusing non-compliant pods
-# Requirements:
-#   - Run via: conftest test labs/lab7/k8s/deployment.yaml --policy labs/lab7/policies
-#   - Must produce deny[msg] for pods missing:
-#       1. spec.securityContext.runAsNonRoot != true
-#       2. (any container) spec.containers[_].securityContext.readOnlyRootFilesystem != true
-#       3. (any container) spec.containers[_].securityContext.allowPrivilegeEscalation != false
-#       4. (any container) spec.containers[_].securityContext.capabilities.drop missing "ALL"
-#
-# Hints:
-#   - Rego primer at https://www.openpolicyagent.org/docs/latest/policy-language/
-#   - `input.kind == "Deployment"` to filter; the pod spec is `input.spec.template.spec`
-#   - `[_]` iterates; `msg := sprintf("...", [...])` formats
-#   - Sample structure:
-#     package main
-#     deny[msg] { input.kind == "Deployment"; <condition>; msg := "..." }
-```
-
-### B.2: Run Conftest against your manifests
-
-```bash
-# Should PASS on your hardened deployment (Task 2 work)
-conftest test labs/lab7/k8s/deployment.yaml --policy labs/lab7/policies
-
-# Create an intentionally bad manifest to verify the policy fires
-cat > /tmp/bad-pod.yaml <<'EOF'
-apiVersion: apps/v1
-kind: Deployment
-metadata: { name: bad-app }
-spec:
-  template:
-    spec:
-      containers:
-        - name: app
-          image: nginx
-          # No securityContext at all — should fail your policy
+mkdir -p /tmp/df-demo
+cat > /tmp/df-demo/Dockerfile <<'EOF'
+FROM node:latest
+USER root
+EXPOSE 22
+ADD https://example.com/app.tar /
 EOF
 
-conftest test /tmp/bad-pod.yaml --policy labs/lab7/policies
-# Should FAIL with deny messages
+trivy config /tmp/df-demo
 ```
 
-### B.3: Document in `submissions/lab7.md`
+The file must be named `Dockerfile`, in a directory you point Trivy at. Named `Dockerfile-bad` or `Dockerfile.bad`, Trivy does not recognise it and cheerfully reports zero findings. Expect four failures: one HIGH and the rest MEDIUM or LOW, so a `--severity HIGH,CRITICAL` filter hides most of them.
 
-````markdown
-## Bonus: Conftest Policy
+**Submit** in `submissions/lab7.md`, section `## Task 1`:
 
-### Policy (paste labs/lab7/policies/pod-hardening.rego)
-```rego
-<paste full policy>
+- Vulnerability counts by severity, and how many of the HIGH and CRITICAL ones have a fix.
+- The same image was scanned by Grype in Lab 4. Put the two totals side by side and explain the difference in one or two sentences; if you no longer have Lab 4's numbers, say so rather than inventing them.
+- The ten rows from 7.2.
+- The Dockerfile findings with their `DS-*` ids, and what each one would let an attacker do.
+- Three or four sentences: your image has vulnerabilities with no fix available. What do you do about those, and what would you tell a manager who asks why the number is not zero?
+
+## Task 2 — Run it under `restricted` (4 pts)
+
+Optional. Skipping it does not affect later labs.
+
+The `restricted` Pod Security Standard is the strictest of the three profiles Kubernetes ships. Write the manifests yourself; the requirements below are the contract.
+
+### 7.4 The manifests
+
+`labs/lab7/k8s/namespace.yaml`
+
+```yaml
+# YOUR TASK: a namespace that enforces the restricted profile
+# Requirements:
+#   - name: juice-shop
+#   - the three pod-security.kubernetes.io labels (enforce, warn, audit), all restricted
+# Hint: https://kubernetes.io/docs/concepts/security/pod-security-admission/
 ```
 
-### Output: PASS on hardened manifest
+`labs/lab7/k8s/serviceaccount.yaml` and `labs/lab7/k8s/deployment.yaml`
+
+```yaml
+# YOUR TASK: a dedicated ServiceAccount and a Deployment that the restricted
+# profile admits. Requirements:
+#   - its own ServiceAccount, with automountServiceAccountToken: false on both
+#     the ServiceAccount and the pod spec
+#   - pod securityContext: runAsNonRoot, a runAsUser matching the image's own
+#     user, seccompProfile RuntimeDefault
+#   - container securityContext: allowPrivilegeEscalation false, capabilities
+#     drop ALL
+#   - requests and limits for cpu and memory
+#   - the image pinned by digest, not by tag. Get it with:
+#       docker inspect bkimminich/juice-shop:v20.0.0 --format '{{index .RepoDigests 0}}'
+# Hints:
+#   - the image already runs as a non-root user. Find which one:
+#     docker inspect bkimminich/juice-shop:v20.0.0 --format '{{.Config.User}}'
+#     Guessing 1000 gives you a pod that starts and then cannot write anything
+#   - restricted does NOT require readOnlyRootFilesystem. That is the bonus
 ```
-<paste — should show 0 failures>
+
+`labs/lab7/k8s/networkpolicy.yaml`
+
+```yaml
+# YOUR TASK: default-deny for the app pod, with the minimum re-opened
+# Requirements:
+#   - podSelector on your app label; policyTypes Ingress and Egress
+#   - ingress: only what you actually need to reach the app
+#   - egress: DNS to kube-system, nothing else it does not need
 ```
 
-### Output: FAIL on bad manifest
-```
-<paste — should show your deny messages>
-```
+### 7.5 Apply and prove it
 
-### What this prevents at CI time (2-3 sentences)
-Reference Lecture 7 slide 16 (admission control diagram). What Class of bug does this
-policy catch BEFORE `kubectl apply` runs? Why is catching at CI-time better than at admission-time?
-````
-
----
-
-## How to Submit
-
+<!-- verify:skip needs the manifests the student writes in 7.4 -->
 ```bash
-git add labs/lab7/k8s/
-git add labs/lab7/policies/                # Bonus only
-git add submissions/lab7.md
-git commit -m "feat(lab7): trivy + PSS restricted + conftest gate"
+kubectl apply -f labs/lab7/k8s/namespace.yaml
+kubectl apply -f labs/lab7/k8s/
+kubectl -n juice-shop wait --for=condition=ready pod -l app=juice-shop --timeout=180s
+kubectl -n juice-shop get pod -l app=juice-shop -o yaml > labs/lab7/results/pod-spec.yaml
+```
+
+The namespace goes first on purpose. `kubectl apply -f <dir>` processes files in alphabetical order, so `deployment.yaml` reaches the API server before `namespace.yaml` and fails with `namespaces "juice-shop" not found`.
+
+### 7.6 Scan the running workload
+
+<!-- verify:skip needs the cluster and the deployment from 7.5 -->
+```bash
+kubectl create ns juice-plain
+kubectl -n juice-plain create deployment juice --image=bkimminich/juice-shop:v20.0.0
+sleep 20
+trivy k8s --include-namespaces juice-plain --severity HIGH,CRITICAL --report=summary
+trivy k8s --include-namespaces juice-shop  --severity HIGH,CRITICAL --report=summary
+
+# Lab 10 imports this file, so keep it
+trivy k8s --include-namespaces juice-shop --severity HIGH,CRITICAL \
+  --format json --output labs/lab7/results/trivy-k8s.json
+```
+
+**Submit**, section `## Task 2`:
+
+- The namespace labels and both `securityContext` blocks.
+- Proof the pod is running, and the user id it runs as, with the command that told you.
+- The two Trivy summaries side by side. The misconfiguration counts should differ; the vulnerability counts should not. Explain both halves of that in two or three sentences.
+- One thing the `restricted` profile blocked that you had to change, and one control the profile does not require that you added anyway.
+
+## Bonus — A read-only root filesystem (2 pts)
+
+`restricted` does not demand it, every hardening benchmark does, and Juice Shop fights back.
+
+<!-- verify:nonzero-ok the container is expected to crash -->
+```bash
+docker run --rm --read-only bkimminich/juice-shop:v20.0.0
+```
+
+That crashes. Your task is to make the same container run with `readOnlyRootFilesystem: true` in Kubernetes.
+
+```yaml
+# YOUR TASK: extend deployment.yaml
+# Requirements:
+#   - container securityContext: readOnlyRootFilesystem: true
+#   - the pod becomes Ready and serves HTTP 200
+# Hints:
+#   - find every path the process writes at runtime, do not guess:
+#     docker run -d --name js bkimminich/juice-shop:v20.0.0 && sleep 25 && docker diff js
+#   - one of those directories also contains files shipped in the image, so an
+#     empty volume over it hides them and the app exits. That is the interesting part
+#   - emptyDir volumes, and an initContainer if you need to seed one of them
+```
+
+**Submit**, section `## Bonus`:
+
+- The `docker diff` output, trimmed to the paths that matter.
+- Your final volume layout and why each entry is there.
+- The directory that could not simply be replaced with an empty volume, and how you solved it.
+- Proof: the pod Ready with `readOnlyRootFilesystem: true`, and an HTTP 200 through `kubectl port-forward`.
+
+## Submit
+
+<!-- verify:skip student fork files -->
+```bash
+git add labs/lab7/k8s/ submissions/lab7.md
+git commit -m "feat(lab7): trivy scans + PSS restricted deployment"
 git push -u origin feature/lab7
-
-# Cleanup the cluster after submitting
-kind delete cluster --name lab7    # or k3d cluster delete lab7
 ```
 
-> **Do NOT commit** `labs/lab7/results/` — regeneratable.
+Clean up: `k3d cluster delete lab7`.
 
-PR checklist body:
+## Acceptance criteria
 
-```text
-- [x] Task 1 — Trivy image + config scans + Grype comparison
-- [ ] Task 2 — Hardened K8s deployment with PSS restricted + NetworkPolicy
-- [ ] Bonus — Conftest policy passing on hardened + failing on bad manifest
-```
+- Task 1 (6): image scan completed; severity counts and the fix-available split; the comparison against Lab 4's Grype totals, or an explicit statement that the numbers were not kept; ten fixable findings ranked; Dockerfile findings with `DS-*` ids and impact; the no-fix answer proposes something other than waiting.
+- Task 2 (4): namespace enforces `restricted`; the Deployment uses its own ServiceAccount with token mounting disabled, sets requests and limits, and pins the image by digest; a NetworkPolicy exists with both policy types; the pod runs and is Ready; `runAsUser` matches the image's real user; both Trivy summaries present with the misconfiguration difference explained; one blocked thing and one voluntary control named.
+- Bonus (2): pod Ready with `readOnlyRootFilesystem: true` and serving 200; the write paths come from `docker diff`, not from guessing; the seeded directory problem is described and solved.
 
----
+## Common pitfalls
 
-## Acceptance Criteria
-
-### Task 1 (6 pts)
-- ✅ Trivy image scan completes; severity table populated
-- ✅ Top-10 fixed CVE table with real CVE IDs + fix versions
-- ✅ Two CVEs compared to Lab 4's Grype results (one tool-agreed, one tool-divergent)
-- ✅ Tool-divergence explanation references DB freshness / package matching / EPSS
-
-### Task 2 (4 pts)
-- ✅ All four manifests written (namespace, sa, deployment, networkpolicy)
-- ✅ Namespace has all three PSS labels (enforce + warn + audit) set to `restricted`
-- ✅ Deployment passes PSS restricted (pod is Running 1/1; no PSS warnings in describe)
-- ✅ Trivy `k8s` scan completes; result documented
-- ✅ "What broke and how you fixed it" addresses readOnlyRootFilesystem specifically
-
-### Bonus Task (2 pts)
-- ✅ Rego policy file exists at `labs/lab7/policies/pod-hardening.rego`
-- ✅ Policy PASSES on Task 2 hardened deployment
-- ✅ Policy FAILS on intentionally bad manifest with clear deny messages
-- ✅ CI-time vs admission-time explanation demonstrates understanding (2-3 sentences)
-
----
-
-## Rubric
-
-| Task | Points | Criteria |
-|------|-------:|----------|
-| **Task 1** — Trivy scans | **6** | Image + config scans + top-10 CVEs + Grype comparison |
-| **Task 2** — K8s hardening | **4** | 4 manifests + pod runs + Trivy K8s scan + read-only-root debug story |
-| **Bonus Task** — Conftest | **2** | Rego policy PASSES + FAILS correctly + CI-vs-admission reflection |
-| **Total** | **12** | 10 main + 2 bonus |
-
----
+- `kubectl apply -f <dir>` is alphabetical, so `deployment.yaml` goes before `namespace.yaml` and the first apply fails. Apply the namespace first.
+- The image runs as UID **65532**, not 1000. `runAsUser: 1000` starts, then fails on the first write.
+- `trivy config` only recognises a file literally named `Dockerfile` (or `*.Dockerfile`). Any other name silently scans nothing.
+- Trivy's Dockerfile checks are `DS-*` ids. `CKV_DOCKER_*` ids belong to Checkov, which is Lab 6's tool.
+- Most Dockerfile findings are MEDIUM. `--severity HIGH,CRITICAL` hides them, which looks like a clean file.
+- `trivy k8s` reports the same image vulnerabilities in both namespaces. Hardening changes misconfigurations, not the contents of the image; only a rebuild changes those.
+- Under `restricted`, a pod that violates the profile is rejected at admission with a clear message. Read it: it names the exact field.
 
 ## Resources
 
-<details>
-<summary>📚 Documentation</summary>
-
-- [Trivy documentation](https://trivy.dev/) — All six targets including image, config, k8s
-- [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) — Official K8s reference
-- [Kubernetes Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/) — How the labels work
-- [Conftest documentation](https://www.conftest.dev/) — Tool homepage
-- [OPA Rego playground](https://play.openpolicyagent.org/) — Interactive 30-min tutorial (do this before B.1)
-- [CIS Kubernetes Benchmark](https://www.cisecurity.org/benchmark/kubernetes) — The source of most K8s rules
-
-</details>
-
-<details>
-<summary>⚠️ Common Pitfalls</summary>
-
-- 🚨 **`k3d cluster create` fails with "Failed to watch ... too many open files"** — WSL2 + crowded Docker Desktop environments hit the default `fs.inotify.max_user_instances = 128` limit. Fix: as root, `sysctl -w fs.inotify.max_user_instances=1024 fs.inotify.max_user_watches=1048576` (or add to `/etc/sysctl.d/*.conf`). On WSL2 specifically, persist via `wsl.conf` or restart WSL after editing `/etc/sysctl.conf`.
-- 🚨 **`kind create cluster` fails on Docker Desktop with "no space left"** — `docker system prune -a` (warning: nukes ALL unused images) or use a Linux VM.
-- 🚨 **Juice Shop pod crashloops with `readOnlyRootFilesystem: true`** — Juice Shop writes to `/tmp` and `/usr/src/app/logs` (and possibly the SQLite DB path). Mount `emptyDir{}` volumes at those paths.
-- 🚨 **PSS doesn't block your bad pod** — verify the namespace labels: `kubectl get ns juice-shop -o yaml | grep pod-security`. If labels show only `warn:` and not `enforce:`, the bad pod will get created with a warning, not blocked.
-- 🚨 **`trivy k8s` requires cluster access** — your `~/.kube/config` must point to the lab cluster. `kubectl config current-context` should show `kind-lab7` or `k3d-lab7`.
-- 🚨 **Conftest `package main` is mandatory** — your Rego file must declare a package. Conftest defaults to looking for `package main` unless you pass `--namespace`.
-- 🚨 **`kubectl wait` times out** — the image pull on first run can take 60+ seconds. Bump `--timeout=300s` if your network is slow.
-- 💡 **PSS `enforce` blocks at create**; `warn` just shows a kubectl message; `audit` writes to audit log only. For production: `enforce`. For migration: start with `warn` and escalate. The lab uses all three set to `restricted`.
-
-</details>
-
-<details>
-<summary>🪜 Looking ahead</summary>
-
-- **Lab 8** (Supply Chain) signs the EXACT image you scanned here with Cosign
-- **Lab 9** (Falco + Conftest) extends the Conftest bonus to **runtime admission** + Falco runtime detection — same Rego skills
-- **Lab 10** (DefectDojo) imports Trivy + your scan results; the hardened manifest becomes the deployable artifact in your portfolio walkthrough
-
-</details>
+- [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/) and [Pod Security Admission](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
+- [Trivy Kubernetes scanning](https://trivy.dev/latest/docs/target/kubernetes/) and [misconfiguration checks](https://avd.aquasec.com/misconfig/)
+- [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
+- [k3d](https://k3d.io/) — the local cluster this lab uses

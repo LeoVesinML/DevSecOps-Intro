@@ -23,11 +23,16 @@ case ${ARCH} in
   *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
+# Pinned by default, like every other tool in this course (tools/versions.yaml).
+# Resolving "latest" here means two students can install different runtimes and
+# get different benchmark numbers. Pass a version to override:
+#   sudo bash install-kata-assets.sh 4.0.1
+KATA_DEFAULT_VER="4.1.0"
+
 if [[ -n "${VER_ARG}" ]]; then
   KATA_VER=$(echo "${VER_ARG}" | sed -E 's/^v//')
 else
-  KATA_VER=$(curl -fsSL https://api.github.com/repos/kata-containers/kata-containers/releases/latest | jq -r .tag_name)
-  KATA_VER=${KATA_VER#v}
+  KATA_VER="${KATA_DEFAULT_VER}"
 fi
 
 ASSET_URL="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VER}/kata-static-${KATA_VER}-${ARCH}.tar.zst"

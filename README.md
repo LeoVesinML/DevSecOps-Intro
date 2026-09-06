@@ -21,15 +21,15 @@ The course follows a **map → discover → write → ship → scan → harden �
 | 1 | Lab 1 | Foundations & SDLC | OWASP Top 10:2025, Juice Shop deploy, PR workflow |
 | 2 | Lab 2 | Threat Modeling | STRIDE, DFDs, trust boundaries, Threagile YAML |
 | 3 | Lab 3 | Secure Git | SSH commit signing, pre-commit gitleaks, history rewrite with `git filter-repo` |
-| 4 | Lab 4 | SBOM + SCA | Syft (CycloneDX 1.6 + SPDX), Grype, Trivy, sign-ready attestations |
+| 4 | Lab 4 | SBOM + SCA | Syft (CycloneDX 1.7 + SPDX), Grype, Trivy, sign-ready attestations |
 | 5 | Lab 5 | SAST + DAST | Semgrep (`p/owasp-top-ten`), ZAP baseline + authenticated, cross-tool correlation |
 | 6 | Lab 6 | IaC Security | Checkov 3.x on Terraform, KICS on Ansible + Pulumi, custom Checkov policies |
-| 7 | Lab 7 | Container/K8s | Trivy image scan, Pod Security Standards (`restricted`), securityContext, NetworkPolicy, Conftest gate |
-| 8 | Lab 8 | Supply Chain | Cosign v3 sign + verify + tamper demo, SBOM/SLSA attestations, `cosign sign-blob` |
+| 7 | Lab 7 | Container/K8s | Trivy image and Dockerfile scan, Pod Security Standards (`restricted`), securityContext, NetworkPolicy, read-only root filesystem |
+| 8 | Lab 8 | Supply Chain | Cosign 3.0 sign + verify + tag-overwrite demo, CycloneDX and SLSA attestations, `cosign sign-blob` |
 | 9 | Lab 9 | Runtime + PaC | Falco (modern eBPF), custom rules, Conftest/Rego policies at CI time |
-| 10 | Lab 10 | Vulnerability Management | DefectDojo capstone — import all prior labs, dedup, SLA matrix, MTTR/age, 5-min walkthrough |
+| 10 | Lab 10 | Vulnerability Management | DefectDojo capstone — import labs 4-7, dedup, SLA configuration, finding age and SLA compliance, 5-min walkthrough |
 | — | Lab 11 | Edge Hardening *(bonus)* | Nginx TLS 1.3, security headers, rate limiting, cert rotation; bonus: Coraza WAF + OWASP CRS |
-| — | Lab 12 | VM Sandboxing *(bonus)* | Kata Containers, runc-vs-VM isolation, perf benchmark; bonus: real container-escape PoC blocked by Kata |
+| — | Lab 12 | VM Sandboxing *(bonus)* | Kata Containers, runc-vs-VM isolation, perf benchmark; bonus: a privileged-container escape stopped by the guest kernel |
 
 ---
 
@@ -78,31 +78,31 @@ graph LR
 
 ## Technology Stack
 
-All tools free and open-source (or have a meaningful free tier). Versions pinned to April-May 2026.
+All tools free and open-source (or have a meaningful free tier). [`tools/versions.yaml`](tools/versions.yaml) is the source of truth for every pin; a weekly job reports when one falls behind upstream. Pins are refreshed before each cohort, not mid-semester.
 
 | Category | Tool | Version | Introduced |
 |----------|------|---------|------------|
 | Target app | OWASP Juice Shop | v20.0.0 | Week 1 (provided) |
 | Containers | Docker / Docker Compose | 28.x | Week 1 |
-| Threat modeling | Threagile | 0.9.1 | Week 2 |
+| Threat modeling | Threagile | 0.9.1 (Jul 2024, latest release) | Week 2 |
 | Pre-commit framework | pre-commit | latest | Week 3 |
-| Secret scanning | gitleaks | 8.21.x | Week 3 |
+| Secret scanning | gitleaks | 8.30.x | Week 3 |
 | History rewrite | git-filter-repo | 2.45+ | Week 3 |
-| SBOM | Syft | 1.41.x | Week 4 |
-| SCA | Grype | 0.107.x | Week 4 |
-| Multi-purpose scanner | Trivy | 0.69.x | Week 4, 6, 7 |
-| SAST | Semgrep CE | 1.157.x | Week 5 |
-| DAST | OWASP ZAP | stable (Checkmarx-maintained) | Week 5 |
-| IaC scanning (Terraform) | Checkov | 3.2.x | Week 6 |
+| SBOM | Syft | 1.51.x | Week 4 |
+| SCA | Grype | 0.118.x | Week 4 |
+| Multi-purpose scanner | Trivy | 0.74.x | Week 4, 6, 7 |
+| SAST | Semgrep CE | 1.176.x | Week 5 |
+| DAST | ZAP (ex-OWASP, now Checkmarx) | 2.17.x via the `stable` tag | Week 5 |
+| IaC scanning (Terraform) | Checkov | 3.3.x | Week 6 |
 | IaC scanning (Ansible/Pulumi) | KICS | latest | Week 6 |
-| Kubernetes | k3d (k3s in Docker) | v5.8.3 / k3s v1.31.x | Week 7 |
-| Policy-as-Code | Conftest + OPA Rego | 0.68.x / 1.15.x | Week 7, 9 |
-| Supply chain | Cosign | v3.0.x | Week 8 |
+| Kubernetes | k3d (k3s in Docker) | v5.9.0 / k3s v1.33.x | Week 7 |
+| Policy-as-Code | Conftest + OPA Rego | 0.69.x / 1.15.x | Week 7, 9 |
+| Supply chain | Cosign | v3.0.x (not 3.1: see versions.yaml) | Week 8 |
 | Local registry | Distribution | v3 | Week 8 |
-| Runtime detection | Falco | 0.43.x | Week 9 |
+| Runtime detection | Falco | 0.43.1 | Week 9 |
 | Vulnerability mgmt | DefectDojo | v2.58.x | Week 10 |
 | Bonus: Edge | Nginx | stable-alpine | Lab 11 |
-| Bonus: VM sandbox | Kata Containers | v3.x | Lab 12 |
+| Bonus: VM sandbox | Kata Containers | 4.1.x | Lab 12 |
 
 ---
 
@@ -121,6 +121,8 @@ The course repo ships **only** lab specs, lecture notes, and plumbing files. Stu
 | `labs/lab10/imports/` — DefectDojo importer | ✅ | |
 | `labs/lab11/docker-compose.yml`, `labs/lab11/reverse-proxy/nginx.conf` | ✅ | |
 | `labs/lab12/scripts/` — Kata install/configure | ✅ | |
+| `tools/` — version manifest + drift and lab checkers | ✅ | |
+| `.github/workflows/course-health.yml`, `.github/ISSUE_TEMPLATE/` | ✅ | |
 | `.github/PULL_REQUEST_TEMPLATE.md` — students write in Lab 1 | | ✅ |
 | `.github/workflows/*.yml` — students add from Lab 1 bonus onward | | ✅ |
 | `.pre-commit-config.yaml` — students write in Lab 3 | | ✅ |
@@ -148,7 +150,7 @@ Each main lab (Labs 1-10) caps at **12 pts = 10 main + 2 bonus**.
 
 A student who only completes Task 1 across all 10 labs ends with a working DevSecOps pipeline — just not all the deeper-dive controls.
 
-**Bonus labs (11 + 12)** have a tighter shape: **Task 1 (4 pts) + Task 2 (4 pts) + Bonus Task (2 pts) = 10 pts total** (vs main labs' 12). The labs are bonus-track in the sense that they're not on the critical path; the Bonus Task inside each lab is still the genuinely-challenging extension. Bonus labs count toward a separate 20% weight (see grading below).
+**Bonus labs (11 + 12)** have a tighter shape: **Task 1 (4 pts) + Task 2 (4 pts) + Bonus Task (2 pts) = 10 pts total** (vs main labs' 12). The labs are bonus-track in the sense that they're not on the critical path; the Bonus Task inside each lab is still the harder extension. Bonus labs count toward a separate 20% weight (see grading below).
 
 ### Submission Workflow
 
@@ -286,6 +288,11 @@ DevSecOps-Intro/
 │   ├── lab11/docker-compose.yml, lab11/reverse-proxy/   # Nginx stack
 │   └── lab12/scripts/, lab12/setup/        # Kata install
 │
+├── tools/                         # Course maintenance (ships)
+│   ├── versions.yaml              #   every pinned tool version, one source of truth
+│   ├── check-versions.py          #   compares the pins with upstream releases
+│   └── verify-lab.sh              #   runs every shell block of a lab spec
+│
 ├── refs/                          # Instructor reference submissions (gitignored)
 │   └── labN.md                    #   model answers per lab, captured from dry-runs
 │
@@ -318,7 +325,7 @@ DevSecOps-Intro/
 </details>
 
 <details>
-<summary>Talks worth your time</summary>
+<summary>Talks</summary>
 
 - *"What Happens When Falco Detects?"* — Loris Degioanni, KubeCon EU 2024
 - *"The xz Backdoor — Engineering Postmortem"* — Andres Freund, BSDCan 2024

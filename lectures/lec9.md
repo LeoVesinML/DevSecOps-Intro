@@ -376,9 +376,9 @@ Lecture 10 takes everything in the program layer above and walks the **vulnerabi
 
 **Talks:**
 
-* 🎥 *"What Happens When Falco Detects?"* — KubeCon EU 2024, Loris Degioanni
-* 🎥 *"OPA: The Universal Policy Engine"* — Tim Hinrichs, Styra (2021)
-* 🎥 *"The DevOps Handbook in 2024"* — Gene Kim, DevOps Enterprise Summit
+* 📜 [Falco documentation](https://falco.org/docs/) — the rule language and the fields available to it
+* 📜 [OPA policy language](https://www.openpolicyagent.org/docs/latest/policy-language/) — Rego, as used by Conftest and KICS
+* 📜 [DORA research](https://dora.dev/research/) — where the delivery metrics in this lecture come from
 
 **Standards & specs:**
 
@@ -397,4 +397,18 @@ Lecture 10 takes everything in the program layer above and walks the **vulnerabi
 | 4 | SAMM tells you where to go; BSIMM tells you where your peers actually are. |
 | 5 | Compliance is downstream of risk management, not the other way around. |
 
-> 💬 *"The goal of detection is response. The goal of response is learning. The goal of learning is preventing the next one."* — adapted from Richard Bejtlich, *The Practice of Network Security Monitoring* (No Starch, 2013)
+> 💬 Detection exists to trigger response, response exists to produce learning, and learning is the only part that prevents the next incident. A pipeline that stops at the alert has bought a dashboard, not security.
+
+---
+
+## 📚 Sources
+
+- Target, 2013: [US Senate Commerce Committee report](https://www.commerce.senate.gov/services/files/24d3c229-4f2f-405d-b8db-a3a67f183883)
+- Equifax, 2017: [US House Oversight report](https://oversight.house.gov/wp-content/uploads/2018/12/Equifax-Report.pdf)
+- SolarWinds, 2020: [CISA alert AA20-352A](https://www.cisa.gov/news-events/cybersecurity-advisories/aa20-352a)
+- Delivery and reliability metrics: [DORA research programme](https://dora.dev/research/)
+- CVSS: [specification and its own guidance on using it for prioritisation](https://www.first.org/cvss/v4.0/specification-document); EPSS: [project page](https://www.first.org/epss/); [CISA Known Exploited Vulnerabilities catalogue](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+- Maturity models: [OWASP SAMM](https://owaspsamm.org/model/), [BSIMM](https://www.blackduck.com/services/security-program/bsimm-maturity-model.html)
+- Falco: [documentation](https://falco.org/docs/), [default rules](https://github.com/falcosecurity/rules)
+- Conftest and OPA: [Conftest](https://www.conftest.dev/), [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/)
+- Liz Rice, *Container Security* (O'Reilly, 2020): [publisher page](https://www.oreilly.com/library/view/container-security/9781492056690/)

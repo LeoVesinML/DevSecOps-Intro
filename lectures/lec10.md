@@ -80,7 +80,7 @@ flowchart LR
 
 ## 📍 Slide 5 – 🎚️ Severity: CVSS v4.0 in Brief
 
-> 💬 *"CVSS was never meant to be a single-number priority. It's a severity vocabulary."* — FIRST CVSS SIG, 2023 onboarding talk
+* 🧠 CVSS describes how bad a vulnerability could be if exploited. It says nothing about whether anyone is exploiting it, which is the question a triage queue actually asks. The v4.0 specification is explicit that the Base score alone is not a risk score
 
 * 🗓️ **CVSS v4.0** — released November 2023; **NVD publishing v4.0 alongside v3.1 since early 2026**
 * 🧩 Four metric groups:
@@ -103,7 +103,7 @@ flowchart LR
   * Public exploit code availability (PoC on GitHub, ExploitDB)
   * Known CVE chatter on social media
   * Real exploit telemetry from large IDS/IPS networks
-* 📊 **Distribution:** ~95% of CVEs have EPSS < 0.10 (likely never exploited). The 5% with EPSS > 0.50 are where the action is
+* 📊 **Distribution:** an EPSS probability of 0.10 sits around the 88th percentile, so roughly **nine CVEs in ten score below it**. The distribution is heavily skewed and the median is far below 0.01, which is exactly why it separates a queue that CVSS alone cannot
 
 > 🤔 **Think:** Your scanner returned 100 CVSS-9 findings. EPSS shows 95 of them at <0.05 and 5 at >0.80. Which five do you fix this week?
 
@@ -129,7 +129,7 @@ quadrantChart
 | **Low CVSS + High EPSS** | Watch closely — fast exploitation can outpace severity |
 | **Low CVSS + Low EPSS** | Batch with normal maintenance |
 
-* 🪜 **DefectDojo 2026 ingests both CVSS and EPSS** and exposes them in the Rules Engine for auto-prioritization
+* 🪜 **DefectDojo carries both CVSS and EPSS on a finding** and can act on them in its rules engine
 * 🧠 **Two-axis triage is the 2026 best practice.** Single-axis CVSS-only triage causes patch fatigue
 
 ---
@@ -377,8 +377,6 @@ After Lab 10 you'll have **measured** numbers — open findings, MTTR, vuln-age.
 
 **Talks & specs:**
 
-* 🎥 *"The DefectDojo Project: 10 Years In"* — Greg Anderson (OWASP), Global AppSec 2024
-* 🎥 *"EPSS: Beyond CVSS"* — Jay Jacobs (FIRST), Black Hat 2023
 * 📜 [CVSS v4.0 Specification](https://www.first.org/cvss/v4.0/specification-document)
 * 📜 [EPSS Data + Model](https://www.first.org/epss/)
 * 📜 [DefectDojo Documentation](https://docs.defectdojo.com/)
@@ -395,3 +393,15 @@ After Lab 10 you'll have **measured** numbers — open findings, MTTR, vuln-age.
 | 6 | The 5-minute walkthrough script (Lab 10 Bonus) is your interview deliverable. Make it real. |
 
 > 💬 *"Vulnerability management is the discipline of knowing what you have, knowing what's wrong with it, and proving to someone else you fixed it on time."* — Derek Fisher, *Application Security Program Handbook* (2023). The end of this course; the start of your career.
+
+---
+
+## 📚 Sources
+
+- CVSS v4.0 (November 2023): [specification](https://www.first.org/cvss/v4.0/specification-document), which states what the Base score does and does not represent
+- EPSS: [project page](https://www.first.org/epss/), [the model paper](https://arxiv.org/abs/2302.14172) behind the current version
+- [CISA Known Exploited Vulnerabilities catalogue](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) — the "someone is definitely using this" list
+- DefectDojo: [documentation](https://docs.defectdojo.com/), [parser list](https://docs.defectdojo.com/en/connecting_your_tools/parsers/), [API v2](https://docs.defectdojo.com/en/api/api-v2-docs/)
+- Log4Shell triage timeline: [Apache Logging security page](https://logging.apache.org/security.html), [CISA guidance](https://www.cisa.gov/news-events/news/apache-log4j-vulnerability-guidance)
+- Programme maturity language: [OWASP SAMM](https://owaspsamm.org/model/)
+- Delivery metrics: [DORA research](https://dora.dev/research/)
