@@ -148,3 +148,13 @@ tools:
       3.x is out. The lab clone is now pinned to 2.58.3 because 3.x renames
       importer parsers, which is exactly what run-imports.sh depends on. The bump
       needs another full lab 10 run against the new parser names.
+
+  kata:
+    pin: "4.1.0"
+    labs: [12]
+    github: kata-containers/kata-containers
+    verified: >
+      2026-09-06, release asset kata-static-4.1.0-amd64.tar.zst resolves and the
+      shipped installer is bash 3.2 clean. The on-host install itself (containerd
+      runtime registration, /opt/kata) was not executed: it modifies the machine
+      it runs on and needs /dev/kvm plus containerd rather than Docker alone.

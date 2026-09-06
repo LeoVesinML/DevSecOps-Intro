@@ -102,7 +102,7 @@ All tools free and open-source (or have a meaningful free tier). [`tools/version
 | Runtime detection | Falco | 0.43.x | Week 9 |
 | Vulnerability mgmt | DefectDojo | v2.58.x | Week 10 |
 | Bonus: Edge | Nginx | stable-alpine | Lab 11 |
-| Bonus: VM sandbox | Kata Containers | v3.x | Lab 12 |
+| Bonus: VM sandbox | Kata Containers | 4.1.x | Lab 12 |
 
 ---
 

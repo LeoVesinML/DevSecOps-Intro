@@ -18,7 +18,7 @@ For the vast majority of workloads, the shared-kernel model is fine. The trade-o
 | Isolation | Process-level (kernel-shared) | Hardware-virtualized |
 | Tooling ecosystem | Mature, container-native | Heavyweight, traditional ops |
 
-VMs cost real performance; containers carry real isolation risk. **Sandboxed runtimes** like Kata Containers try to give you the container ergonomics + VM isolation at *some* cost — typically 1-2x cold-start time and 5-20% I/O overhead.
+VMs cost performance; containers carry isolation risk. **Sandboxed runtimes** like Kata try to buy VM isolation with container ergonomics, and the price shows up mostly in cold-start time and I/O. Do not take a number from this reading: Lab 12 has you measure both on your own hardware, because the answer depends on your storage and your kernel.
 
 This reading walks the landscape: Kata, gVisor, Firecracker, and the emerging Confidential Computing frontier.
 
@@ -26,9 +26,9 @@ This reading walks the landscape: Kata, gVisor, Firecracker, and the emerging Co
 
 ## Kata Containers: The Mainstream VM-Sandbox
 
-* 🏢 **Hosted at OpenStack Foundation** since 2017 (merger of Intel Clear Containers + Hyper.sh runV)
+* 🏢 Formed in **2017** by merging Intel's Clear Containers with Hyper.sh's runV, hosted by the OpenInfra Foundation (formerly the OpenStack Foundation)
 * 🐹 Written in **Go** (CRI plugin) + **Rust** (the agent runs inside the VM)
-* 🔢 Latest: **Kata Containers v3.x** (April 2026)
+* 🔢 Latest release: **4.1.0**. Lab 12 pins it; `tools/versions.yaml` records the pin
 * 🪜 Used in production by: **Ant Group**, **Baidu**, **Adobe** (some workloads), **DigitalOcean Kubernetes** as an opt-in runtime
 
 ### How Kata Works
@@ -61,7 +61,7 @@ Key details:
 ### What Kata Costs You
 
 - **~5× cold-start** (microVM boot vs runc exec)
-- **5-20% I/O overhead** depending on workload (virtio-fs/virtiofsd improvements help a lot)
+- **I/O overhead**, the size of which depends on the storage backend; virtio-fs narrowed it considerably. Measure it rather than quoting it
 - **Higher memory per container** (each microVM has its own kernel, ~50-100MB resident)
 - **Some kernel features unavailable** (host network namespaces, host PID, certain device pass-through)
 
@@ -104,7 +104,7 @@ flowchart LR
     style Sentry fill:#9C27B0,color:#fff
 ```
 
-* 🪜 **Sentry** = the user-space kernel. Intercepts ~80% of syscalls, emulates them in user space, calls the host for the rest (filtered through seccomp).
+* 🪜 **Sentry** = the user-space kernel. It implements the Linux system call surface itself and reaches the host only through a narrow, seccomp-filtered path. The coverage is deliberately partial: applications that use a syscall it does not implement fail, which is the compatibility cost gVisor trades for its isolation.
 * 🪜 **Gofer** = handles file-system I/O on behalf of the container, running as a separate process.
 
 ### gVisor vs Kata
@@ -114,8 +114,8 @@ flowchart LR
 | Isolation mechanism | User-space syscall interception + seccomp | Hardware virtualization (KVM) |
 | Host requirements | Any Linux | KVM-enabled Linux |
 | Cold start | ~100ms | ~1-2s |
-| Syscall compat | ~80% of Linux ABI (gaps exist) | 100% (real kernel inside the VM) |
-| CPU overhead | 10-30% (every syscall is intercepted) | 1-5% (native CPU once booted) |
+| Syscall compat | a large but incomplete subset of the Linux ABI | the whole ABI: it is a real kernel |
+| CPU overhead | higher: every syscall goes through the Sentry | lower: native CPU once the guest has booted |
 | Memory overhead | Low (no extra kernel) | High (one mini-kernel per container) |
 | Mature for | CI runners, edge functions | Multi-tenant SaaS, sensitive workloads |
 
@@ -133,7 +133,7 @@ AWS's contribution to the field, open-sourced **2018**. Powers AWS Lambda and AW
 
 ### Why It Matters
 
-Lambda runs ~100M function invocations per *minute* (2025 numbers). Each one is a new microVM. Firecracker's stripped-down design is what makes that economically viable.
+AWS has said Lambda serves trillions of invocations a month, each isolated in its own microVM. Whatever the current figure, the design constraint is the same: at that rate, a hundred milliseconds and a few megabytes per sandbox decide whether the service is viable.
 
 For your purposes:
 
@@ -307,3 +307,14 @@ Most OCI images "just work" in Kata. Exceptions:
 Read this first. Run Lab 12. Re-read when you hit a pitfall.
 
 > 💬 *"You don't pay for the VM until something bad happens. The hard part is convincing the budget that the bad thing is probable enough."* — paraphrased from an Adobe SecOps talk at KubeCon EU 2024.
+
+---
+
+## Sources
+
+- Kata Containers: [project site](https://katacontainers.io/), [releases](https://github.com/kata-containers/kata-containers/releases), [architecture documentation](https://github.com/kata-containers/kata-containers/tree/main/docs/design)
+- gVisor: [documentation](https://gvisor.dev/docs/), [architecture guide](https://gvisor.dev/docs/architecture_guide/) and its own [performance guide](https://gvisor.dev/docs/architecture_guide/performance/)
+- Firecracker: [project site](https://firecracker-microvm.github.io/), [design document](https://github.com/firecracker-microvm/firecracker/blob/main/docs/design.md), [the NSDI 2020 paper](https://www.usenix.org/conference/nsdi20/presentation/agache)
+- runc CVE-2024-21626: [Snyk research](https://snyk.io/blog/leaky-vessels-docker-runc-container-breakout-vulnerabilities/), [runc advisory](https://github.com/opencontainers/runc/security/advisories/GHSA-xr7r-f8xq-vfvv)
+- Confidential computing: [AMD SEV-SNP](https://www.amd.com/en/developer/sev.html), [Intel TDX](https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/overview.html), [Confidential Containers](https://confidentialcontainers.org/)
+- Kubernetes [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/)

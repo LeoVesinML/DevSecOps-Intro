@@ -51,3 +51,24 @@ Researched, sourced, waiting for the lecture that fits.
 | ingress-nginx "IngressNightmare" CVE-2025-1974 | 2025 | lec7 (still unplaced; lec7 already carries a 2024 case) | Admission controller reachable from any pod: cluster network policy -> lab 7 |
 | Snowflake customer data theft (no enforced MFA) | 2024 | lec9 or lec10 | Not a product vulnerability: a missing control the customer owned |
 | EPSS v4 and the CISA KEV catalogue | 2025 | lec10 | Prioritising by exploitation probability instead of CVSS alone |
+
+## Coverage check, 2026-09-06
+
+Every lecture and reading has had its sourcing pass. Freshness against the
+"one incident from the last 24 months" rule:
+
+| Where | Newest incident | Within 24 months? |
+|---|---|---|
+| lec1 | Log4Shell (2021) | no: it is a foundations lecture built on three classics, deliberately |
+| lec2 | Salesloft Drift (Aug 2025) | yes |
+| lec3 | s1ngularity / Nx (Aug 2025) | yes |
+| lec4 | tj-actions/changed-files (Mar 2025) | yes |
+| lec5 | GitLab CVE-2023-7028 (Jan 2024) | borderline; replace next cohort |
+| lec6 | Imperva (2019), Tesla (2018) | no: candidate is IngressNightmare or a 2025 cloud case |
+| lec7 | runc Leaky Vessels (Jan 2024) | borderline; IngressNightmare fits here too |
+| lec8 | xz-utils (Mar 2024) | borderline; Shai-Hulud (Sep 2025) is parked above |
+| lec9 | SolarWinds (2020), Equifax (2017) | no: candidate is the Snowflake customer breaches (2024) |
+| lec10 | Log4Shell triage (2021) | no: candidate is EPSS v4 and the KEV catalogue |
+
+Lectures 1, 6, 9 and 10 are the queue for the next freshness pass. All four
+have a sourced candidate parked in the table above.
