@@ -96,7 +96,7 @@ while IFS="$(printf '\t')" read -r n start marker; do
     printf "      ok (non-zero exit, expected)\n"
   else
     printf "      FAILED (exit %s), last lines:\n" "$?"
-    tail -5 "$WORK/out-$n.log" | sed 's/^/      | /'
+    tail -5 "$WORK/out-$n.log" | cut -c1-160 | sed 's/^/      | /'
     failed=$((failed + 1))
     break
   fi

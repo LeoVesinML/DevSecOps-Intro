@@ -33,8 +33,8 @@ had its sourcing pass yet. `cut` removed, kept here so it is not reintroduced.
 | Drupalgeddon 2 CVE-2018-7600 | 2018 | lec5 | SAST and DAST both plausible -> lab 5 | Drupal SA-CORE-2018-002 | ok | replace with a 2024+ case |
 | GitLab CVE-2023-7028 | 2024 | lec5 | Business-logic bugs evade both scanners -> lab 2 | GitLab critical patch release, 11 Jan 2024 | ok | 2027 |
 | Imperva breach via stolen AWS key | 2019 | lec6 | Internet-reachable instance + over-scoped IAM -> lab 6 | Imperva security update + post-mortem coverage | ok | 2027 |
-| Docker Hub breach | 2019 | lec7 | Registry trust -> lab 8 | Docker security notice | verify | replace with a 2024+ case |
-| runc "Leaky Vessels" CVE-2024-21626 | 2024 | lec7 | Container escape, pinned runtimes -> lab 7, lab 12 | Snyk research, runc advisory | verify | 2027 |
+| Docker Hub breach | 2019 | lec7 | Registry trust -> lab 8 | Snyk and BleepingComputer coverage, Apr 2019 | ok | replace with a 2024+ case |
+| runc "Leaky Vessels" CVE-2024-21626 | 2024 | lec7 | Container escape, pinned runtimes -> lab 7, lab 12 | Snyk research, GHSA-xr7r-f8xq-vfvv | ok | 2027 |
 | ua-parser-js compromise | 2021 | lec8 | Dependency signing and provenance -> lab 8 | GitHub advisory | verify | 2027 |
 | xz-utils backdoor CVE-2024-3094 | 2024 | lec8 | Provenance and build reproducibility -> lab 8 | Andres Freund's disclosure, CISA | verify | 2028 |
 | SolarWinds Orion | 2020 | lec9 | Build-system integrity -> lab 8 | CISA AA20-352A | verify | classic, keep |
@@ -48,6 +48,6 @@ Researched, sourced, waiting for the lecture that fits.
 | Microsoft Exchange Online / Storm-0558 signing key | 2023-2024 | lec2 or lec8 | A consumer key signed enterprise tokens: a trust boundary that existed on paper only. CSRB report is a rare public root-cause document |
 | Polyfill.io supply-chain injection | 2024 | lec8 | A dependency that changed owner, not version. Pinning by version does not help; SRI and provenance do |
 | Shai-Hulud npm worm | 2025 | lec8 | Self-propagating package compromise via stolen publish tokens (keep distinct from s1ngularity, now used in lec3) |
-| ingress-nginx "IngressNightmare" CVE-2025-1974 | 2025 | lec7 | Admission controller reachable from any pod: cluster network policy -> lab 7 |
+| ingress-nginx "IngressNightmare" CVE-2025-1974 | 2025 | lec7 (still unplaced; lec7 already carries a 2024 case) | Admission controller reachable from any pod: cluster network policy -> lab 7 |
 | Snowflake customer data theft (no enforced MFA) | 2024 | lec9 or lec10 | Not a product vulnerability: a missing control the customer owned |
 | EPSS v4 and the CISA KEV catalogue | 2025 | lec10 | Prioritising by exploitation probability instead of CVSS alone |
