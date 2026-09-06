@@ -139,8 +139,12 @@ tools:
     pin: "2.58.3"
     labs: [10]
     github: DefectDojo/django-DefectDojo
-    verified: recorded
+    verified: >
+      2026-09-06, full lab 10 run: stack up in release mode, product and
+      engagement created through the API, all seven parser names confirmed
+      present, and the shipped importer loading real Semgrep (26 findings) and
+      Checkov (80 findings) reports
     hold: |
-      3.x is out and renames importer parsers, which is exactly what the lab 10
-      importer depends on. Needs a full lab 10 run (4 GB of RAM, all prior labs'
-      outputs) before the bump.
+      3.x is out. The lab clone is now pinned to 2.58.3 because 3.x renames
+      importer parsers, which is exactly what run-imports.sh depends on. The bump
+      needs another full lab 10 run against the new parser names.

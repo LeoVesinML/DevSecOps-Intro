@@ -146,6 +146,10 @@ kubectl -n juice-plain create deployment juice --image=bkimminich/juice-shop:v20
 sleep 20
 trivy k8s --include-namespaces juice-plain --severity HIGH,CRITICAL --report=summary
 trivy k8s --include-namespaces juice-shop  --severity HIGH,CRITICAL --report=summary
+
+# Lab 10 imports this file, so keep it
+trivy k8s --include-namespaces juice-shop --severity HIGH,CRITICAL \
+  --format json --output labs/lab7/results/trivy-k8s.json
 ```
 
 **Submit**, section `## Task 2`:

@@ -33,9 +33,15 @@ require_env() {
 
 require_env DD_TOKEN
 
+failures=0
+
 DD_URL="${DD_URL:-http://localhost:8080}"
 DD_API="${DD_API:-$DD_URL/api/v2}"
-DD_PRODUCT_TYPE="${DD_PRODUCT_TYPE:-Engineering}"
+# Must match the product type of an existing product with this name, or the API
+# rejects every import with a product-type conflict. "Research and Development"
+# is what a stock DefectDojo has as product type id 1, which is what lab10.md
+# creates the product with.
+DD_PRODUCT_TYPE="${DD_PRODUCT_TYPE:-Research and Development}"
 DD_PRODUCT="${DD_PRODUCT:-OWASP Juice Shop}"
 DD_ENGAGEMENT="${DD_ENGAGEMENT:-Course Semester Run}"
 
@@ -73,7 +79,9 @@ choose_type() {
 SCAN_GRYPE="$(choose_type '^Anchore Grype' 'Anchore Grype')"
 SCAN_TRIVY="$(choose_type '^Trivy Scan$' 'Trivy Scan')"
 SCAN_TRIVY_OP="$(choose_type '^Trivy Operator' 'Trivy Operator Scan')"
-SCAN_SEMGREP="$(choose_type '^Semgrep' 'Semgrep JSON Report')"
+# Anchored: DefectDojo also ships "Semgrep Pro JSON Report", which does not
+# parse community `semgrep --json` output.
+SCAN_SEMGREP="$(choose_type '^Semgrep JSON Report$' 'Semgrep JSON Report')"
 SCAN_ZAP="$(choose_type '^ZAP' 'ZAP Scan')"
 SCAN_CHECKOV="$(choose_type '^Checkov' 'Checkov Scan')"
 SCAN_KICS="$(choose_type '^KICS' 'KICS Scan')"
@@ -99,7 +107,8 @@ import_scan() {
   base="$(basename "$file")";             base="${base//[^A-Za-z0-9_.-]/_}"
   out="$out_dir/import-${tag}-${base}"
   echo "Importing $scan_type from $rel"
-  if ! curl -sS -X POST "$DD_API/import-scan/" \
+  local code
+  code="$(curl -sS -o "$out" -w '%{http_code}' -X POST "$DD_API/import-scan/" \
       -H "Authorization: Token $DD_TOKEN" \
       -F "scan_type=$scan_type" \
       -F "file=@$file" \
@@ -109,10 +118,23 @@ import_scan() {
       -F "auto_create_context=true" \
       -F "minimum_severity=Info" \
       -F "close_old_findings=false" \
-      -F "push_to_jira=false" \
-      | tee "$out" >/dev/null; then
-    echo "  WARN: import request failed for $scan_type ($base)" >&2
-  fi
+      -F "push_to_jira=false")" || code="000"
+  # A 400 from DefectDojo still exits curl 0, so check the status. Silent
+  # failures here are how a student ends up with an empty dashboard and no idea why.
+  case "$code" in
+    2*)
+      if $have_jq; then
+        echo "  ok: test $(jq -r '.test // "?"' "$out"), $(jq -r '.statistics.after.total.active // "?"' "$out") active findings"
+      else
+        echo "  ok (HTTP $code)"
+      fi
+      ;;
+    *)
+      echo "  FAILED: HTTP $code for $scan_type ($base)" >&2
+      if $have_jq; then jq -r '.[]? // .detail? // .' "$out" 2>/dev/null | head -3 | sed 's/^/    /' >&2; fi
+      failures=$((failures + 1))
+      ;;
+  esac
 }
 
 # Lab 4 — SCA (SBOM-derived)
@@ -129,4 +151,8 @@ import_scan "$SCAN_KICS"     "$repo_root/labs/lab6/results/kics-pulumi/results.j
 import_scan "$SCAN_TRIVY"    "$repo_root/labs/lab7/results/trivy-image.json"
 import_scan "$SCAN_TRIVY_OP" "$repo_root/labs/lab7/results/trivy-k8s.json"
 
+if [[ $failures -gt 0 ]]; then
+  echo "Done with $failures failed import(s). Responses are under $out_dir" >&2
+  exit 1
+fi
 echo "Done. Import responses saved under $out_dir"
