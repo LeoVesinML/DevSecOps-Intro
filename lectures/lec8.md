@@ -51,7 +51,7 @@ graph LR
 
 ## 📍 Slide 4 – 📜 Why Supply Chain Is a Distinct Layer
 
-> 💬 *"You can't trust anything you didn't build yourself. And you didn't build everything yourself."* — Ken Thompson's classic *"Reflections on Trusting Trust"* (1984, Turing Award lecture) — the original supply-chain paper
+> 💬 *"You can't trust code that you did not totally create yourself."* — Ken Thompson, *Reflections on Trusting Trust*, 1984 Turing Award lecture. He then showed a compiler that inserts a backdoor into a program **and into future compilers**, so the source of both looks clean
 
 ```mermaid
 flowchart LR
@@ -302,13 +302,13 @@ Back to xz-utils 2024 with the lecture's tools in hand:
 
 * 🧠 **No silver bullet.** xz showed that even with Cosign, SBOM, and signed packages, a **patient attacker with maintainer privileges** can ship a backdoor. Reproducible builds + community signing are the deeper defenses
 
-> 💬 *"xz-utils proved that supply chain security is not a tool you buy. It's a discipline you maintain."* — Filippo Valsorda, Cryptographers' Mailing List, April 2024
+* 🧠 Nothing in this lecture would have stopped the xz backdoor from being merged. Signing, provenance and SBOMs would have told you, within minutes rather than months, exactly which of your builds contained 5.6.0 and 5.6.1. That is the honest claim to make for these tools
 
 ---
 
 ## 📍 Slide 15 – 🌊 The "in-toto Layout" Model
 
-* 📜 **in-toto** is a CMU project (since 2017); the underlying spec for everything Sigstore does
+* 📜 **in-toto** comes from NYU's Secure Systems Lab (2015, Justin Cappos's group). It joined the CNCF sandbox in 2019, incubation in 2022 and graduated in 2025; its attestation format is what Cosign puts a signature on
 * 🪜 The mental model: every step in your pipeline produces a **link** (a signed claim about what happened), and a **layout** describes the required steps + their valid producers
 * 🪜 In practice today (2026), most orgs use Cosign attestations (which use in-toto envelope) rather than the full in-toto layout system, because Cosign is enough
 
@@ -428,3 +428,16 @@ jobs:
 | 6 | A signature you don't verify is decoration. Admission-time verification (L9) is non-optional. |
 
 > 💬 *"You cannot trust code that you did not totally create yourself."* — Ken Thompson, Turing Award lecture, 1984. The original supply-chain paper. Read it before lecture 9.
+
+---
+
+## 📚 Sources
+
+- xz-utils backdoor, CVE-2024-3094: [Andres Freund's disclosure on oss-security, 29 March 2024](https://www.openwall.com/lists/oss-security/2024/03/29/4), [CISA alert](https://www.cisa.gov/news-events/alerts/2024/03/29/reported-supply-chain-compromise-affecting-xz-utils-data-compression-library-cve-2024-3094)
+- Ken Thompson, *Reflections on Trusting Trust* (1984): [ACM Turing Award lecture, PDF](https://www.cs.cmu.edu/~rdriley/487/papers/Thompson_1984_ReflectionsonTrustingTrust.pdf)
+- Sigstore: [project site](https://www.sigstore.dev/), [OpenSSF graduation, March 2024](https://openssf.org/blog/2024/03/20/sigstore-graduates-a-monumental-step-towards-secure-software-supply-chains/), [Cosign docs](https://docs.sigstore.dev/cosign/signing/overview/)
+- in-toto: [NYU Secure Systems Lab](https://ssl.engineering.nyu.edu/projects), [CNCF graduation, April 2025](https://www.cncf.io/announcements/2025/04/23/cncf-announces-graduation-of-in-toto-security-framework-enhancing-software-supply-chain-integrity-across-industries/)
+- SLSA v1.0 (April 2023): [specification](https://slsa.dev/spec/v1.0/)
+- ua-parser-js compromise, October 2021: [GitHub advisory](https://github.com/advisories/GHSA-pjwm-rvh2-c87w)
+- npm provenance (2023): [npm documentation](https://docs.npmjs.com/generating-provenance-statements)
+- Codecov, April 2021: [Codecov security update](https://about.codecov.io/security-update/)
