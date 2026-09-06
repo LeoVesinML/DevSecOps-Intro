@@ -21,7 +21,7 @@
 |---|-----------|
 | 1 | ✅ Distinguish SAST, DAST, and IAST — and choose when each is the right tool |
 | 2 | ✅ Read a **Semgrep** finding and explain what its pattern matched |
-| 3 | ✅ Run **OWASP ZAP** against a target in both baseline + full-scan modes |
+| 3 | ✅ Run **ZAP** against a target in both baseline and full-scan modes |
 | 4 | ✅ Configure **authenticated DAST** with the ZAP Automation Framework |
 | 5 | ✅ Correlate a single bug across a SAST and a DAST report — the strongest possible evidence |
 
@@ -81,16 +81,16 @@ graph TB
   * Cryptographic primitives misuse (MD5 for hashing, ECB mode, hardcoded keys)
   * Insecure deserialization patterns (`pickle.loads(request.body)`)
 
-* 🪜 **The tradeoff: false positives.** Modern SAST tools (Semgrep, CodeQL, Bandit) hover around **40–60% FP rate**. Better than 90% from earlier-generation tools, but the triage discipline (Lecture 10) is still essential
+* 🪜 **The tradeoff: false positives.** A pattern that matches safe code is indistinguishable from one that matches a bug until a human reads it. Published false-positive rates vary by tool, ruleset and codebase, so measure yours on your own repository rather than trusting a vendor number. In Lab 5 you will produce that measurement
 
 ---
 
 ## 📍 Slide 6 – 🐍 Semgrep — The Modern SAST Default
 
-* 🏢 Created by **r2c** (Returned-to-Code, founded by Stanford alumni), open-sourced **2017** — now Semgrep Inc.
+* 🏢 Started life as **sgrep**, part of Facebook's `pfff` analysis library written by **Yoann Padioleau** in 2009. The company r2c hired him in 2019, renamed the tool **Semgrep**, and released it as open source in **2020**
 * 🐍 Implementation: Python + Rust core (uses `tree-sitter` for parsing)
 * 🌐 **20+ languages** supported with native parsers: Python, JS/TS, Go, Java, C/C++, Ruby, Rust, PHP, Kotlin, Swift, Scala, ...
-* 🔢 Course pins **Semgrep CE 1.x** (latest stable as of April 2026)
+* 🔢 Course pins **Semgrep CE 1.176** (see `tools/versions.yaml`); the engine is LGPL 2.1, the paid platform adds dashboards and triage
 * 📜 Free OSS edition; paid SaaS (Semgrep AppSec Platform) adds dashboards, secrets dataflow, AI triage
 
 ```bash
@@ -100,7 +100,7 @@ semgrep --config=p/owasp-top-ten ./src/   # community ruleset
 ```
 
 * 🪜 **Rule packs:** `p/owasp-top-ten`, `p/security-audit`, `p/javascript`, `p/python`, `p/secrets`. Mix and match
-* 🎯 The **2026 benchmark** Semgrep CE: 87% true-positive rate, 42% false-positive rate. *Use it. Tune it. Don't trust it blindly.*
+* 🎯 Rules are the product. A ruleset tuned to your framework beats a generic one by a wide margin, which is why Lab 5 asks you to read the findings rather than count them
 
 ---
 
@@ -164,12 +164,12 @@ rules:
 
 ---
 
-## 📍 Slide 10 – 🕷️ OWASP ZAP — The Open-Source DAST Standard
+## 📍 Slide 10 – 🕷️ ZAP — The Open-Source DAST Standard
 
-* 🏢 Created by **Simon Bennetts** in **2010** as a fork of Paros Proxy; the longest-running OWASP flagship project after the Top 10
-* 🪜 **As of 2024, OWASP ZAP is maintained by Checkmarx** (Simon Bennetts joined Checkmarx; project remains OSS under OWASP)
+* 🏢 Created by **Simon Bennetts** in **2010** as a fork of Paros Proxy, and for over a decade the best known OWASP tool project
+* 🪜 **It is no longer an OWASP project.** ZAP left OWASP in **August 2023** for the Linux Foundation's Software Security Project, and in **2024** its core team joined **Checkmarx**. It is still open source and free; the correct name today is just **ZAP**, which matters when you search for documentation
 * 🐍 Java + plenty of add-ons; CLI + GUI + Docker image
-* 🔢 Course pins **ZAP v2.15.x** (April 2026 stable)
+* 🔢 Latest release is **v2.17.0** (December 2025); the labs pull the `stable` Docker tag
 * 🛠️ Two main scan modes:
   * **Baseline** — passive scan, no attacks (fast, ~1-2 min)
   * **Full scan** — active scan (sends payloads, may break the target — staging only)
@@ -214,13 +214,14 @@ jobs:
 ```
 
 * 🪜 **Lab 5 ships this config pre-written** as plumbing — students fill in the credentials and run the framework
-* 🪜 Authenticated scan finds **10–20× more issues** than unauth — the math of attack surface
+* 🪜 An unauthenticated scan sees the login page. Everything behind a session, which is where broken access control and IDOR live, is invisible to it
+* 🧠 **Careful with the metric.** In Lab 5 the authenticated run reports *fewer* alerts than the baseline, because a passive scan reports header issues on every URL it touches while the active run works a smaller, deeper surface. The authenticated run is the one that finds the SQL injection. Compare severities, not totals
 
 ---
 
 ## 📍 Slide 12 – 🍹 OWASP Juice Shop: The Course Target
 
-* 🪜 Recall Lecture 1: Juice Shop is the canonical "deliberately broken" web app, ~100 documented vulnerabilities
+* 🪜 Recall Lecture 1: Juice Shop is the canonical broken-on-purpose web app, 112 documented challenges in v20.0.0
 * 🪜 **Why it's perfect for SAST+DAST learning:**
   * Real Node.js/Angular/SQLite stack — Semgrep has rules for all of these
   * Realistic auth (JWT, OAuth, MFA challenges)
@@ -283,10 +284,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@b4ffde6...
-      - uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/owasp-top-ten
-          generateSarif: '1'
+      - name: Semgrep
+        # the old semgrep-action is archived; run the CLI image instead
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:1.176.0 \
+            semgrep --config=p/owasp-top-ten --sarif --output=/src/semgrep.sarif /src
 
   dast:
     needs: [sast]                     # don't waste resources if SAST gates fail
@@ -296,7 +298,7 @@ jobs:
         image: ghcr.io/${{ github.repository }}/juice-shop:${{ github.sha }}
         ports: [3000:3000]
     steps:
-      - uses: zaproxy/action-baseline@v0.13.0
+      - uses: zaproxy/action-baseline@v0.15.0
         with:
           target: http://localhost:3000
 ```
@@ -360,10 +362,10 @@ jobs:
 
 **Talks & specs:**
 
-* 🎥 *"Semgrep: Easy Customization for Modern Codebases"* — Drew Dennison (r2c/Semgrep), Black Hat 2021
-* 🎥 *"DAST in 2024: Beyond the Spider"* — Simon Bennetts (Checkmarx/ZAP), AppSec EU 2024
+* 📜 [ZAP Automation Framework](https://www.zaproxy.org/docs/automate/automation-framework/) — how the `zap-auth.yaml` in Lab 5 works
+* 📜 [Semgrep rule syntax](https://semgrep.dev/docs/writing-rules/rule-syntax) — for the day a generic ruleset stops fitting your code
 * 📜 [Semgrep Registry](https://semgrep.dev/explore) — every public ruleset
-* 📜 [OWASP ZAP Documentation](https://www.zaproxy.org/docs/)
+* 📜 [ZAP documentation](https://www.zaproxy.org/docs/)
 * 📜 [OWASP Benchmark](https://owasp.org/www-project-benchmark/) — ground-truth comparison of SAST tools
 
 **Takeaways:**
@@ -372,9 +374,22 @@ jobs:
 |---|---|
 | 1 | SAST reads code at rest; DAST watches code in motion. Either alone has known gaps. |
 | 2 | Semgrep rules look like the code they match — anyone on your team can write one. |
-| 3 | Authenticated DAST finds 10–20× more than unauth. Wire it up in Lab 5; don't skip it. |
+| 3 | An unauthenticated scan cannot reach what needs a session. Wire up authentication in Lab 5 and measure the difference yourself. |
 | 4 | Correlation across SAST + DAST is the highest-confidence finding type. Lab 5 bonus produces this. |
 | 5 | Diff-scan is the sustainability discipline — gate new findings, schedule the backlog. |
 | 6 | Heartbleed would have been caught by either tool with the right rule. Coverage > frequency. |
 
-> 💬 *"The bug is in the code. The exploit is in the running app. To find both, look at both."* — paraphrased from every AppSec engineer ever.
+> 💬 The bug is in the code. The exploit is in the running app. Neither view is complete on its own, which is why this lecture teaches two tools instead of one.
+
+---
+
+## 📚 Sources
+
+- Semgrep origins: [sgrep in Facebook's pfff](https://github.com/facebookarchive/pfff), [r2c's own account of the lineage](https://semgrep.dev/blog/2021/semgrep-a-static-analysis-journey/), [open-source release, 2020](https://semgrep.dev/blog/2020/introducing-semgrep-and-r2c/)
+- ZAP governance: [ZAP is joining the Software Security Project (August 2023)](https://www.zaproxy.org/blog/2023-08-01-zap-is-joining-the-software-security-project/), [ZAP ownership page](https://www.zaproxy.org/docs/zap-ownership/), [releases](https://github.com/zaproxy/zaproxy/releases)
+- ZAP automation: [Automation Framework docs](https://www.zaproxy.org/docs/automate/automation-framework/), [Docker images](https://www.zaproxy.org/docs/docker/)
+- Heartbleed, CVE-2014-0160: [heartbleed.com](https://heartbleed.com/), [NVD entry](https://nvd.nist.gov/vuln/detail/CVE-2014-0160)
+- Drupalgeddon 2, CVE-2018-7600: [Drupal SA-CORE-2018-002](https://www.drupal.org/sa-core-2018-002)
+- GitLab CVE-2023-7028: [GitLab critical patch release, 11 January 2024](https://about.gitlab.com/releases/2024/01/11/critical-security-release-gitlab-16-8-1-released/)
+- Juice Shop challenge count: [`data/static/challenges.yml` at v20.0.0](https://github.com/juice-shop/juice-shop/blob/v20.0.0/data/static/challenges.yml)
+- Semgrep CI: [running Semgrep in CI](https://semgrep.dev/docs/semgrep-ci/overview), [ZAP baseline action](https://github.com/zaproxy/action-baseline)
