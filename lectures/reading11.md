@@ -373,7 +373,7 @@ Three one-liners answer most of "what is happening at my edge?"
 
 Read this first. Then attempt Lab 11. Re-read sections when you hit a pitfall.
 
-> 💬 *"Get TLS and headers right at the edge; everything inside the perimeter inherits the gain."* — paraphrased standing advice from every AppSec consultant.
+> 💬 TLS and headers set once at the edge apply to every route behind it, including the ones nobody remembers writing. That is the only kind of security control that scales without anybody's cooperation.
 
 ---
 
