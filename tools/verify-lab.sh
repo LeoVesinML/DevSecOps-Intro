@@ -9,6 +9,8 @@
 #                                 KVM, anything destructive
 #   <!-- verify:wait 25 -->       wait N seconds first, where the lab text tells a
 #                                 human to wait for a service to come up
+#   <!-- verify:nonzero-ok -->    a non-zero exit is the expected outcome, as with a
+#                                 scanner that exits 1 because it found something
 #
 # Blocks that would change the machine outside this repo (git config --global,
 # sudo, package installs, writes under $HOME) are refused automatically, marked
@@ -33,7 +35,7 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/verify-lab$LAB.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 awk -v out="$WORK" '
-  /^<!-- verify:(skip|wait)/ { marker = $0; next }
+  /^<!-- verify:(skip|wait|nonzero-ok)/ { marker = $0; next }
   /^```(bash|sh|console)$/ && !inblock {
     inblock = 1; n++; start = NR
     file = sprintf("%s/block-%03d.sh", out, n)
@@ -69,9 +71,14 @@ while IFS="$(printf '\t')" read -r n start marker; do
       printf "  %2s  line %-5s SKIP  %s\n" "$n" "$start" "$first"
       continue ;;
     *verify:wait*)
-      wait_for=$(echo "$marker" | sed -n 's/.*verify:wait *\([0-9][0-9]*\).*/\1/p') ;;
+      wait_for=$(echo "$marker" | sed -n 's/.*verify:wait *\([0-9][0-9]*\).*/\1/p')
+      nonzero_ok="" ;;
+    *verify:nonzero-ok*)
+      wait_for=""
+      nonzero_ok=1 ;;
     *)
-      wait_for="" ;;
+      wait_for=""
+      nonzero_ok="" ;;
   esac
   if [ "$MODE" != "--run" ]; then
     printf "  %2s  line %-5s      %s\n" "$n" "$start" "$first"
@@ -85,6 +92,8 @@ while IFS="$(printf '\t')" read -r n start marker; do
   ran=$((ran + 1))
   if ( cd "$ROOT" && bash -eo pipefail "$file" ) > "$WORK/out-$n.log" 2>&1; then
     printf "      ok\n"
+  elif [ -n "$nonzero_ok" ]; then
+    printf "      ok (non-zero exit, expected)\n"
   else
     printf "      FAILED (exit %s), last lines:\n" "$?"
     tail -5 "$WORK/out-$n.log" | sed 's/^/      | /'

@@ -9,7 +9,7 @@
 * 💾 Attacker exfiltrates **106 million records** — names, addresses, credit scores, 140,000 Social Security numbers
 * 💰 Settlement + remediation: **~$190 million**
 * 🧠 The vulnerable WAF, the over-privileged IAM role, and the exposed metadata endpoint were all **declared in Terraform** — and never scanned
-* 🪜 By 2020 Capital One had Checkov in their pipeline. Two years and $190M too late
+* 🪜 The control that catches this is a scan of the infrastructure definition, before it is applied. That is the whole of this lecture
 
 > 🤔 **Think:** Lecture 5 covered SAST scanning your *application code*. What scans your *infrastructure code* before `terraform apply` lights it on fire?
 
@@ -78,7 +78,7 @@ flowchart LR
 ```
 
 * ⚡ Mistakes that used to be **one engineer × one resource** are now **one git push × N replicas**
-* 🧠 IBM's 2024 *Cost of a Data Breach* report attributes **~45%** of cloud breaches to misconfiguration — more than any other root cause
+* 🧠 IBM's *Cost of a Data Breach 2024* puts **cloud misconfiguration behind 15%** of breaches, level with phishing and ahead of known-vulnerability exploitation at 5%
 * 🎯 **The whole point of IaC scanning:** catch the typo before `terraform apply` does it to 200 buckets
 
 > 🤔 **Think:** Lecture 5's SAST checks *application code*. IaC scanning checks *infrastructure code*. Same shift-left philosophy; different file type.
@@ -133,7 +133,7 @@ graph TB
 
 * 🏢 Built by **Bridgecrew** (acquired by **Palo Alto Networks**, March 2021); open-sourced 2019
 * 🐍 Written in Python (`pip install checkov`); ships rules in YAML + Python
-* 🔢 Latest major: **Checkov 3.x** (2026) — **2,500+ built-in policies**, 800+ graph-based checks
+* 🔢 **Checkov 3.x** ships about **1,350 built-in checks**, of which roughly **210 are graph checks** (`CKV2_*`) that reason across resources rather than inside one. Count them yourself with `checkov --list`
 * 📂 Scans: Terraform, OpenTofu, CloudFormation, Kubernetes, Helm, Dockerfile, GitHub Actions, ARM, Bicep, OpenAPI, Pulumi, Ansible (basic)
 
 ```bash
@@ -159,7 +159,7 @@ checkov -d ./terraform/ --output cli --output json --output-file-path results
 Check: CKV_AWS_18: "Ensure the S3 bucket has access logging enabled"
         FAILED for resource: aws_s3_bucket.user_uploads
         File: /modules/storage/main.tf:14-22
-        Guide: https://docs.bridgecrew.io/docs/s3_13-enable-logging
+        Guide: https://www.checkov.io/5.Policy%20Index/all.html
 ```
 
 | 🏷️ Element | 🎯 Meaning |
@@ -178,7 +178,7 @@ Check: CKV_AWS_18: "Ensure the S3 bucket has access logging enabled"
 
 * 🏢 Built by **Checkmarx**, open-sourced **November 2020**; written in Go
 * 📜 Rules in **Rego** (same language as OPA — directly relevant to Lecture 9)
-* 🔢 Latest stable: 2.x (last release **March 2025**) — **2,400+ Rego queries**
+* 🔢 KICS 2.x ships about **2,000 Rego queries** across its supported platforms
 * 🌍 Scans: Terraform, K8s, Ansible, Docker/Compose, CloudFormation, OpenAPI, Helm, Bicep, **Pulumi**, Crossplane, GitHub Workflows, gRPC
 
 ```bash
@@ -281,7 +281,7 @@ jobs:
   2. The **rendered state** (`pulumi preview --json`) — what will actually be created
 * 🎯 **Checkov scans the rendered state** (`pulumi preview` JSON), not your TypeScript directly — which is exactly right, because IaC misconfigs live in the resource graph, not the loop that built it
 
-> 💬 *"Pulumi's superpower is that you write infrastructure in your favorite language. Pulumi's superpower is also that you can write a `for` loop that provisions 500 buckets."* — paraphrasing the Pulumi team at KubeCon 2023
+* 🧠 Writing infrastructure in a real language is Pulumi's advantage and its hazard: the same expressiveness that removes boilerplate also lets a `for` loop provision five hundred buckets, and lets a scanner lose track of what will actually exist
 
 ---
 
@@ -297,13 +297,12 @@ jobs:
 
 ## 📍 Slide 16 – 🔬 Case Study: Imperva (2019)
 
-* 🗓️ **October 2019** — Imperva discloses a 2018 breach traced to a **misconfigured snapshot**
-* 🧪 A pre-prod database snapshot is created with an embedded AWS API key
-* 🪣 The snapshot's S3 bucket lacked default-deny ACL; attacker enumerates and exfiltrates **customer email + hashed passwords**
-* 🪜 Two IaC rules would have caught this:
-  * `CKV_AWS_18` (S3 logging) — would have shown the access
-  * `CKV_AWS_56` (S3 public access block) — would have prevented the access
-* 💭 Imperva is a security company. **No one is immune to misconfiguration.** This is precisely why the scanner runs in CI, not in someone's head
+* 🗓️ **August 2019** — Imperva tells customers of its Cloud WAF product (formerly Incapsula) that their data has been taken. A third party had contacted them with a copy of it
+* 🧪 The October post-mortem: during a cloud migration, a **database snapshot was created for testing**. Separately, an **internal compute instance holding an AWS API key was left reachable from the internet**
+* 🔑 The attacker compromised that instance, took the key, and used it to read the snapshot. Exfiltration had started in **October 2018**, ten months before anyone noticed
+* 🧹 The clean-up: about **13,000 passwords**, **13,500 SSL certificates** and **1,400 API keys** rotated
+* 🪜 **Which IaC rules would have mattered here:** a security-group rule allowing `0.0.0.0/0` to an internal instance, and an IAM policy letting one instance read production snapshots. Neither is exotic; both are in the Terraform sample you scan in Lab 6
+* 💭 Imperva is a security company. The control that fails is rarely the one you named in the architecture diagram
 
 ---
 
@@ -358,8 +357,8 @@ The first scan of a real codebase will find hundreds of issues. A program rule o
 
 **Talks & specs:**
 
-* 🎥 *"Securing Infrastructure as Code"* — Barak Schoster (Bridgecrew/Checkov), Black Hat 2020
-* 🎥 *"From tfsec to Trivy: Consolidating IaC Scanning"* — Aqua team, KubeCon NA 2023
+* 📜 [Checkov policy index](https://www.checkov.io/5.Policy%20Index/all.html) — every built-in check with its id
+* 📜 [KICS queries](https://docs.kics.io/latest/queries/all-queries/) — the same for KICS
 * 📜 [CIS Benchmarks](https://www.cisecurity.org/cis-benchmarks/) — the source of most rules
 * 📜 [Checkov rule index](https://www.checkov.io/5.Policy%20Index/terraform.html) — every `CKV_AWS_*` with description
 * 📜 [KICS query catalogue](https://docs.kics.io/latest/queries/all-queries/) — all 2,400+ Rego queries
@@ -376,3 +375,16 @@ The first scan of a real codebase will find hundreds of issues. A program rule o
 | 6 | Custom policies turn your team's tribal knowledge into a CI-enforced rule. Write the bonus-task policy seriously — it's how programs scale. |
 
 > 💬 *"The cloud is just someone else's computer — and now you're declaring it as text. Read your declarations before AWS does."* — paraphrased from too many KubeCon hallway tracks to count
+
+---
+
+## 📚 Sources
+
+- Capital One, 2019: [DOJ conviction release](https://www.justice.gov/usao-wdwa/pr/former-seattle-tech-worker-convicted-wire-fraud-and-computer-intrusions), [OCC penalty](https://www.occ.gov/news-issuances/news-releases/2020/nr-occ-2020-101.html)
+- Breach causes: [IBM, Cost of a Data Breach 2024](https://www.ibm.com/think/insights/whats-new-2024-cost-of-a-data-breach-report) — cloud misconfiguration behind 15% of breaches
+- Tesla, February 2018: [CyberScoop on the RedLock finding](https://cyberscoop.com/tesla-cryptomining-redlock-cloud-breach/)
+- Imperva, 2019: [Imperva's own security update](https://www.imperva.com/blog/ceoblog/), [post-mortem coverage](https://www.databreachtoday.com/impervas-breach-post-mortem-api-key-left-exposed-a-13238)
+- Checkov: [repository](https://github.com/bridgecrewio/checkov), [policy index](https://www.checkov.io/5.Policy%20Index/all.html), [custom YAML policies](https://www.checkov.io/3.Custom%20Policies/YAML%20Custom%20Policies.html). Check counts in this lecture come from `checkov --list` on 3.2.529
+- KICS: [documentation](https://docs.kics.io/), [query catalogue](https://docs.kics.io/latest/queries/all-queries/). Query count measured in the `checkmarx/kics` image, v2.1.20
+- tfsec's retirement into Trivy: [tfsec repository notice](https://github.com/aquasecurity/tfsec), [Trivy misconfiguration scanning](https://trivy.dev/latest/docs/scanner/misconfiguration/)
+- Kief Morris, *Infrastructure as Code*, 2nd ed. (O'Reilly, 2020): [publisher page](https://www.oreilly.com/library/view/infrastructure-as-code/9781098114664/)

@@ -32,7 +32,7 @@ had its sourcing pass yet. `cut` removed, kept here so it is not reintroduced.
 | tj-actions/changed-files compromise | 2025 | lec4 (was dated 2024, fixed 2026-09-06) | SHA-pin actions, and an update path so the pin does not rot -> lab 1 bonus, lab 4 | CISA alert, CVE-2025-30066, Wiz | ok | 2028 |
 | Drupalgeddon 2 CVE-2018-7600 | 2018 | lec5 | SAST and DAST both plausible -> lab 5 | Drupal SA-CORE-2018-002 | ok | replace with a 2024+ case |
 | GitLab CVE-2023-7028 | 2024 | lec5 | Business-logic bugs evade both scanners -> lab 2 | GitLab critical patch release, 11 Jan 2024 | ok | 2027 |
-| Imperva breach via stolen AWS key | 2019 | lec6 | Key exposure through infra -> lab 6 | Imperva post-mortem | verify | 2027 |
+| Imperva breach via stolen AWS key | 2019 | lec6 | Internet-reachable instance + over-scoped IAM -> lab 6 | Imperva security update + post-mortem coverage | ok | 2027 |
 | Docker Hub breach | 2019 | lec7 | Registry trust -> lab 8 | Docker security notice | verify | replace with a 2024+ case |
 | runc "Leaky Vessels" CVE-2024-21626 | 2024 | lec7 | Container escape, pinned runtimes -> lab 7, lab 12 | Snyk research, runc advisory | verify | 2027 |
 | ua-parser-js compromise | 2021 | lec8 | Dependency signing and provenance -> lab 8 | GitHub advisory | verify | 2027 |
