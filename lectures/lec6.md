@@ -374,7 +374,7 @@ The first scan of a real codebase will find hundreds of issues. A program rule o
 | 5 | Day-one full scan is a learning exercise. **Gate on new** is the operational pattern. |
 | 6 | Custom policies turn your team's tribal knowledge into a CI-enforced rule. Write the bonus-task policy seriously — it's how programs scale. |
 
-> 💬 *"The cloud is just someone else's computer — and now you're declaring it as text. Read your declarations before AWS does."* — paraphrased from too many KubeCon hallway tracks to count
+> 💬 Infrastructure as code turned your cloud account into a text file. That is the whole opportunity: a text file can be reviewed, tested and rejected before anything exists to attack.
 
 ---
 
