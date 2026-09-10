@@ -53,8 +53,10 @@ spec:
               mountPath: /juice-shop/data
             - name: logs
               mountPath: /juice-shop/logs
-            - name: videos
-              mountPath: /juice-shop/frontend/dist/frontend/assets/public/videos
+            - name: frontend
+              mountPath: /juice-shop/frontend/dist/frontend
+            - name: well-known
+              mountPath: /juice-shop/.well-known
       initContainers:
         - name: seed-writable
           image: bkimminich/juice-shop@sha256:fd58bdc9745416afce8184ee0666278a436574633ea7880365153a63bfd418b0
@@ -72,10 +74,16 @@ spec:
                   if (e.isDirectory()) cp(s, d); else fs.copyFileSync(s, d);
                 }
               }
-              cp('/juice-shop/ftp', '/seed-ftp');
-              cp('/juice-shop/i18n', '/seed-i18n');
-              cp('/juice-shop/data', '/seed-data');
-              cp('/juice-shop/frontend/dist/frontend/assets/public/videos', '/seed-videos');
+              for (const [src, dst] of [
+                ['/juice-shop/ftp', '/seed-ftp'],
+                ['/juice-shop/i18n', '/seed-i18n'],
+                ['/juice-shop/data', '/seed-data'],
+                ['/juice-shop/frontend/dist/frontend', '/seed-frontend'],
+                ['/juice-shop/.well-known', '/seed-well-known'],
+              ]) {
+                if (fs.existsSync(src)) cp(src, dst);
+                else fs.mkdirSync(dst, { recursive: true });
+              }
           securityContext:
             allowPrivilegeEscalation: false
             runAsNonRoot: true
@@ -91,8 +99,10 @@ spec:
               mountPath: /seed-i18n
             - name: data
               mountPath: /seed-data
-            - name: videos
-              mountPath: /seed-videos
+            - name: frontend
+              mountPath: /seed-frontend
+            - name: well-known
+              mountPath: /seed-well-known
       volumes:
         - name: tmp
           emptyDir: {}
@@ -104,7 +114,9 @@ spec:
           emptyDir: {}
         - name: logs
           emptyDir: {}
-        - name: videos
+        - name: frontend
+          emptyDir: {}
+        - name: well-known
           emptyDir: {}
 ---
 apiVersion: v1

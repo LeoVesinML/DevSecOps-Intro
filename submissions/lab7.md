@@ -35,7 +35,15 @@ Compensate with PSS restricted, NetworkPolicy, read-only rootfs, drop ALL caps, 
 - Dedicated ServiceAccount; requests/limits set; NetworkPolicy Ingress+Egress (DNS only egress)
 
 ### Proof
-k3d cluster `lab7` created. Pod reaches Ready with `runAsUser=65532` and `readOnlyRootFilesystem=true` after seeding writable dirs (see Bonus). HTTP 200 via `kubectl port-forward` once the pod is Ready (re-verify if cluster was restarted).
+k3d cluster `lab7`. Pod Ready with `runAsUser=65532` and `readOnlyRootFilesystem=true` after seeding writable dirs (see Bonus).
+
+```text
+NAME                          READY   STATUS    RESTARTS   AGE
+juice-shop-788dd7564f-sm4ft   1/1     Running   0          23s
+readOnlyRootFilesystem=true runAsUser=65532 READY=true
+curl http://127.0.0.1:18080/rest/admin/application-version -> HTTP 200 {"version":"20.0.0"}
+curl http://127.0.0.1:18080/ -> HTTP 200
+```
 
 ### Trivy k8s
 Misconfiguration counts differ between `juice-plain` and `juice-shop`; vulnerability counts stay similar because hardening does not rebuild the image.
@@ -48,7 +56,9 @@ Misconfiguration counts differ between `juice-plain` and `juice-shop`; vulnerabi
 Writes under `/juice-shop/ftp`, `/juice-shop/i18n`, `/juice-shop/data` (sqlite + static), `/juice-shop/logs`, plus frontend asset touches.
 
 ### Volume layout
-emptyDir mounts for `tmp`, `ftp`, `i18n`, `data`, `logs`. Init container uses `/nodejs/bin/node` (no `sh` in image) to seed `ftp`/`i18n`/`data` into those volumes so shipped files are not hidden.
+emptyDir mounts for `tmp`, `ftp`, `i18n`, `data`, `logs`, `frontend/dist/frontend`, `.well-known`. Init uses `/nodejs/bin/node` (no `sh`) to seed those trees so shipped files are not hidden by blank mounts.
 
-### Hard directory
-`/juice-shop/data` cannot be a blank emptyDir — it ships `static/` needed at boot; seeding the tree solves it.
+### Hard directories
+- `/juice-shop/data` ships `static/` needed at boot — seed, do not mount empty.
+- `/juice-shop/frontend/dist/frontend` is rewritten at startup (`customizeApplication` / easter egg) — seed the whole dist tree.
+- `/.well-known` is rewritten for CSAF metadata — seed similarly.
