@@ -12,6 +12,16 @@ Ciphersuite: TLS_AES_256_GCM_SHA384
 ```
 Server offers TLS 1.2/1.3 only (`ssl_protocols TLSv1.2 TLSv1.3`).
 
+`testssl.sh --protocols` excerpt:
+```
+SSLv2      not offered (OK)
+SSLv3      not offered (OK)
+TLS 1      not offered
+TLS 1.1    not offered
+TLS 1.2    offered (OK)
+TLS 1.3    offered (OK): final
+```
+
 ### Headers (always)
 - Strict-Transport-Security: `max-age=31536000; includeSubDomains; preload`
 - X-Frame-Options: `DENY`
@@ -50,4 +60,15 @@ Off here (self-signed lab cert). In production stapling saves clients a round-tr
 Distributed bots / many IPs; spoofed/X-Forwarded-For if you key on a spoofable header. Mitigate with authenticated edge, CDN/WAF bot scores, and shared rate store keyed on credential+IP.
 
 ## Bonus
-WAF (ModSecurity CRS / Coraza) not fully wired in this pass — optional follow-up with `owasp/modsecurity-crs:nginx` on a second published port.
+Same payload `GET /rest/products/search?q=' OR 1=1--`:
+
+| Path | Status | Notes |
+|------|-------:|-------|
+| Plain nginx `https://localhost/...` | **500** | Juice Shop SQLite error — proxy forwarded the SQLi |
+| WAF `http://localhost:8080/...` | **403** | CRS blocked before backend |
+
+CRS rule that fired: **942100** (`REQUEST-942-APPLICATION-ATTACK-SQLI.conf`) — "SQL Injection Attack Detected via libinjection" on `ARGS:q`. Anomaly gate **949110** then denied (score ≥ 5).
+
+False-positive check: `q=apple` → **200** on both plain and WAF (no block on a normal search).
+
+Rollout: start CRS in `DetectionOnly`, tune false positives / exception rules against real traffic for 1–2 weeks, raise paranoia only after baseline is quiet, then flip `MODSEC_RULE_ENGINE=On`. Day-one blocking without a tuning window is how teams disable the WAF after the first broken checkout.
