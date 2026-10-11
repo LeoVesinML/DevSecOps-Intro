@@ -1,23 +1,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: juice-violates
-  namespace: default
+  name: juice-violates-extra
+  namespace: juice-shop
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: juice-violates
+      app: juice
   template:
     metadata:
       labels:
-        app: juice-violates
+        app: juice
     spec:
+      # deliberately omit automountServiceAccountToken: false -> warn
       containers:
         - name: juice
-          image: bkimminich/juice-shop:v20.0.0
+          image: bkimminich/juice-shop:v20.0.0  # no digest -> deny
+          ports:
+            - containerPort: 3000
           securityContext:
-            runAsNonRoot: true
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
             capabilities:
               drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /rest/admin/application-version
+              port: 3000
+          readinessProbe:
+            httpGet:
+              path: /rest/admin/application-version
+              port: 3000
